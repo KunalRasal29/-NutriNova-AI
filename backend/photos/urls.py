@@ -1,0 +1,75 @@
+from django.urls import path
+
+from photos.views import (
+    AddManualPhotoFoodView,
+    AnalyzeMealPhotoView,
+    AnalyzeNutritionLabelView,
+    ConfirmLabelAsFoodView,
+    ConfirmPhotoAsMealView,
+    DecrementDetectedFoodView,
+    IncrementDetectedFoodView,
+    MatchPhotoFoodsView,
+    PhotoAnalysisDetailView,
+    PhotoAnalysisReviewView,
+    PhotoDetectedFoodDetailView,
+    RecalculatePhotoPreviewView,
+)
+
+urlpatterns = [
+    path("analyze-meal/", AnalyzeMealPhotoView.as_view(), name="photo-analyze-meal"),
+    path(
+        "analyze-label/",
+        AnalyzeNutritionLabelView.as_view(),
+        name="photo-analyze-label",
+    ),
+    path(
+        "analyses/<uuid:id>/",
+        PhotoAnalysisDetailView.as_view(),
+        name="photo-analysis-detail",
+    ),
+    path(
+        "analyses/<uuid:id>/review/",
+        PhotoAnalysisReviewView.as_view(),
+        name="photo-analysis-review",
+    ),
+    path(
+        "analyses/<uuid:id>/confirm-as-meal/",
+        ConfirmPhotoAsMealView.as_view(),
+        name="photo-confirm-as-meal",
+    ),
+    path(
+        "analyses/<uuid:id>/match-foods/",
+        MatchPhotoFoodsView.as_view(),
+        name="photo-match-foods",
+    ),
+    path(
+        "analyses/<uuid:id>/add-manual-food/",
+        AddManualPhotoFoodView.as_view(),
+        name="photo-add-manual-food",
+    ),
+    path(
+        "analyses/<uuid:id>/recalculate-preview/",
+        RecalculatePhotoPreviewView.as_view(),
+        name="photo-recalculate-preview",
+    ),
+    path(
+        "analyses/<uuid:id>/confirm-label-as-food/",
+        ConfirmLabelAsFoodView.as_view(),
+        name="photo-confirm-label-as-food",
+    ),
+    path(
+        "detected-foods/<uuid:id>/",
+        PhotoDetectedFoodDetailView.as_view(),
+        name="photo-detected-food-detail",
+    ),
+    path(
+        "detected-foods/<uuid:id>/increment/",
+        IncrementDetectedFoodView.as_view(),
+        name="photo-detected-food-increment",
+    ),
+    path(
+        "detected-foods/<uuid:id>/decrement/",
+        DecrementDetectedFoodView.as_view(),
+        name="photo-detected-food-decrement",
+    ),
+]

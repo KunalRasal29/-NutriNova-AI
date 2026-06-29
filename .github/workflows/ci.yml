@@ -1,0 +1,89 @@
+name: NutriNova AI CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend tests and lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nutrinova
+          POSTGRES_USER: nutrinova
+          POSTGRES_PASSWORD: nutrinova
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nutrinova -d nutrinova"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_SECRET_KEY: ci-secret-key-not-for-production
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      POSTGRES_DB: nutrinova
+      POSTGRES_USER: nutrinova
+      POSTGRES_PASSWORD: nutrinova
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      REDIS_URL: redis://127.0.0.1:6379/0
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+      CELERY_TASK_ALWAYS_EAGER: "True"
+      USE_S3_STORAGE: "False"
+      PHOTO_ANALYSIS_PROVIDER: mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Check backend formatting and lint
+        working-directory: backend
+        run: |
+          ruff check .
+          black --check .
+          isort --check-only .
+      - name: Run migrations
+        working-directory: backend
+        run: python manage.py migrate --noinput
+      - name: Run backend tests
+        working-directory: backend
+        run: pytest
+
+  mobile:
+    name: Flutter analyze and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+      - name: Analyze Flutter app
+        working-directory: mobile
+        run: flutter analyze
+      - name: Run Flutter tests
+        working-directory: mobile
+        run: flutter test
