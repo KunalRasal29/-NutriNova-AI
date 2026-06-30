@@ -94,6 +94,7 @@ class FoodSummary {
     required this.dataClassification,
     required this.verified,
     required this.preview,
+    this.isFavorite = false,
     this.defaultServingDescription = '',
     this.defaultServingGrams = 0,
   });
@@ -113,6 +114,7 @@ class FoodSummary {
       dataClassification:
           json['data_classification']?.toString() ?? 'official_unverified',
       verified: json['verified'] == true,
+      isFavorite: json['is_favorite'] == true,
       defaultServingDescription: serving['description']?.toString() ?? '',
       defaultServingGrams: _asDouble(serving['grams']),
       preview: MacroPreview(
@@ -139,6 +141,7 @@ class FoodSummary {
   final double confidenceScore;
   final String dataClassification;
   final bool verified;
+  final bool isFavorite;
   final MacroPreview preview;
   final String defaultServingDescription;
   final double defaultServingGrams;

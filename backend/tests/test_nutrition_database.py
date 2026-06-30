@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from foods.models import Food, FoodDataImportJob, FoodNutrient, FoodServing
+from foods.models import FavoriteFood, Food, FoodDataImportJob, FoodNutrient, FoodServing
 from nutrition.models import Nutrient, NutritionDataSource
 
 User = get_user_model()
@@ -191,6 +191,131 @@ def test_food_search_endpoint_supports_barcode_lookup(api_client, user, sample_f
     assert len(results) == 1
     assert results[0]["id"] == str(sample_food.id)
     assert results[0]["name"] == "Paneer"
+
+
+@pytest.mark.django_db
+def test_food_collection_endpoints_return_recent_frequent_favorites_and_my_foods(
+    api_client,
+    user,
+    sample_food,
+):
+    source = sample_food.source
+    rice = Food.objects.create(
+        canonical_name="Cooked rice",
+        food_type=Food.FoodType.GENERIC,
+        source=source,
+        external_id="IFCT-RICE-001",
+        country_code="IN",
+        serving_description="1 cup",
+        default_serving_g=Decimal("160.00"),
+        data_quality_score=Decimal("0.8500"),
+    )
+    FoodServing.objects.create(
+        food=rice,
+        serving_name="1 cup",
+        grams=Decimal("160.00"),
+        is_default=True,
+    )
+    custom = Food.objects.create(
+        canonical_name="Kunal private oats",
+        food_type=Food.FoodType.USER_CUSTOM,
+        source=NutritionDataSource.objects.get(
+            source_type=NutritionDataSource.SourceType.USER_CUSTOM
+        ),
+        external_id="",
+        country_code="IN",
+        serving_description="1 bowl",
+        default_serving_g=Decimal("100.00"),
+        data_quality_score=Decimal("0.5000"),
+        created_by=user,
+    )
+    FoodServing.objects.create(
+        food=custom,
+        serving_name="1 bowl",
+        grams=Decimal("100.00"),
+        is_default=True,
+    )
+    for food, calories, protein, carbs, fat in (
+        (rice, "130.0000", "2.7000", "28.0000", "0.3000"),
+        (custom, "70.0000", "2.5000", "12.0000", "1.5000"),
+    ):
+        FoodNutrient.objects.bulk_create(
+            [
+                FoodNutrient(
+                    food=food,
+                    nutrient=Nutrient.objects.get(code=code),
+                    amount_per_100g=Decimal(amount),
+                    source=food.source,
+                    confidence_score=Decimal("0.7000"),
+                    derivation_method=FoodNutrient.DerivationMethod.ESTIMATED,
+                )
+                for code, amount in {
+                    "calories": calories,
+                    "protein_g": protein,
+                    "carbs_g": carbs,
+                    "fat_g": fat,
+                }.items()
+            ]
+        )
+
+    api_client.force_authenticate(user=user)
+    for food in (sample_food, sample_food, rice):
+        response = api_client.post(
+            reverse("meal-manual-add"),
+            {
+                "meal_type": "lunch",
+                "food_id": str(food.id),
+                "quantity_value": "1",
+                "quantity_unit": "serving",
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+
+    FavoriteFood.objects.create(user=user, food=sample_food)
+
+    recent = api_client.get(reverse("food-recent"))
+    assert recent.status_code == 200
+    recent_names = [item["name"] for item in recent.json()["results"]]
+    assert recent_names[:2] == ["Cooked rice", "Paneer"]
+
+    frequent = api_client.get(reverse("food-frequent"))
+    assert frequent.status_code == 200
+    assert frequent.json()["results"][0]["name"] == "Paneer"
+
+    favorites = api_client.get(reverse("food-favorites"))
+    assert favorites.status_code == 200
+    assert favorites.json()["results"][0]["name"] == "Paneer"
+    assert favorites.json()["results"][0]["is_favorite"] is True
+
+    my_foods = api_client.get(reverse("food-my-foods"))
+    assert my_foods.status_code == 200
+    assert my_foods.json()["results"][0]["name"] == "Kunal private oats"
+
+
+@pytest.mark.django_db
+def test_food_favorite_toggle_updates_favorites_list(api_client, user, sample_food):
+    api_client.force_authenticate(user=user)
+
+    response = api_client.post(reverse("food-favorite", args=[sample_food.id]))
+    assert response.status_code == 200
+    assert response.json()["is_favorite"] is True
+    assert FavoriteFood.objects.filter(user=user, food=sample_food).exists()
+
+    favorites = api_client.get(reverse("food-favorites"))
+    assert favorites.status_code == 200
+    assert [item["id"] for item in favorites.json()["results"]] == [
+        str(sample_food.id)
+    ]
+
+    response = api_client.delete(reverse("food-favorite", args=[sample_food.id]))
+    assert response.status_code == 200
+    assert response.json()["is_favorite"] is False
+    assert FavoriteFood.objects.filter(user=user, food=sample_food).exists() is False
+
+    favorites = api_client.get(reverse("food-favorites"))
+    assert favorites.status_code == 200
+    assert favorites.json()["results"] == []
 
 
 @pytest.mark.django_db

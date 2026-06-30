@@ -13,6 +13,22 @@ final foodSearchProvider =
   return ref.watch(nutritionRepositoryProvider).searchFoods(query.trim());
 });
 
+final recentFoodsProvider = FutureProvider<List<FoodSummary>>((ref) async {
+  return ref.watch(nutritionRepositoryProvider).recentFoods();
+});
+
+final frequentFoodsProvider = FutureProvider<List<FoodSummary>>((ref) async {
+  return ref.watch(nutritionRepositoryProvider).frequentFoods();
+});
+
+final favoriteFoodsProvider = FutureProvider<List<FoodSummary>>((ref) async {
+  return ref.watch(nutritionRepositoryProvider).favoriteFoods();
+});
+
+final myFoodsProvider = FutureProvider<List<FoodSummary>>((ref) async {
+  return ref.watch(nutritionRepositoryProvider).myFoods();
+});
+
 final foodDetailProvider =
     FutureProvider.family<FoodDetail, String>((ref, foodId) async {
   return ref.watch(nutritionRepositoryProvider).foodDetail(foodId);

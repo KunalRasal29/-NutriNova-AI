@@ -9,6 +9,14 @@ abstract class NutritionRepository {
     DateTime? recordedOn,
   });
   Future<List<FoodSummary>> searchFoods(String query);
+  Future<List<FoodSummary>> recentFoods();
+  Future<List<FoodSummary>> frequentFoods();
+  Future<List<FoodSummary>> favoriteFoods();
+  Future<List<FoodSummary>> myFoods();
+  Future<void> setFoodFavorite({
+    required String foodId,
+    required bool isFavorite,
+  });
   Future<List<FoodSummary>> lookupBarcode(String barcode);
   Future<FoodDetail> foodDetail(String foodId);
   Future<List<MealLogSummary>> mealsForDate(DateTime date);
@@ -158,6 +166,39 @@ class ApiNutritionRepository implements NutritionRepository {
     return results
         .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  @override
+  Future<List<FoodSummary>> recentFoods() => _foodList('/api/foods/recent/');
+
+  @override
+  Future<List<FoodSummary>> frequentFoods() =>
+      _foodList('/api/foods/frequent/');
+
+  @override
+  Future<List<FoodSummary>> favoriteFoods() =>
+      _foodList('/api/foods/favorites/');
+
+  @override
+  Future<List<FoodSummary>> myFoods() => _foodList('/api/foods/my-foods/');
+
+  Future<List<FoodSummary>> _foodList(String path) async {
+    final response = await _apiClient.get(path);
+    return _extractList(response.data)
+        .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<void> setFoodFavorite({
+    required String foodId,
+    required bool isFavorite,
+  }) async {
+    if (isFavorite) {
+      await _apiClient.post('/api/foods/$foodId/favorite/');
+    } else {
+      await _apiClient.delete('/api/foods/$foodId/favorite/');
+    }
   }
 
   @override
@@ -532,6 +573,7 @@ class MockNutritionRepository implements NutritionRepository {
       confidenceScore: 0.95,
       dataClassification: 'official_verified',
       verified: true,
+      isFavorite: true,
       preview: MacroPreview(
         caloriesKcal: 155,
         proteinG: 12.6,
@@ -738,6 +780,34 @@ class MockNutritionRepository implements NutritionRepository {
         .where((food) => food.name.toLowerCase().contains(normalized))
         .toList();
   }
+
+  @override
+  Future<List<FoodSummary>> recentFoods() async {
+    return _foods.take(4).toList();
+  }
+
+  @override
+  Future<List<FoodSummary>> frequentFoods() async {
+    return _foods.take(5).toList();
+  }
+
+  @override
+  Future<List<FoodSummary>> favoriteFoods() async {
+    return _foods.where((food) => food.isFavorite).toList();
+  }
+
+  @override
+  Future<List<FoodSummary>> myFoods() async {
+    return _foods
+        .where((food) => food.dataClassification == 'user_custom')
+        .toList();
+  }
+
+  @override
+  Future<void> setFoodFavorite({
+    required String foodId,
+    required bool isFavorite,
+  }) async {}
 
   @override
   Future<List<FoodSummary>> lookupBarcode(String barcode) async {
