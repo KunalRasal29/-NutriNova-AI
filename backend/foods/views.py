@@ -76,6 +76,7 @@ class FoodSearchView(generics.ListAPIView):
                 search_rank=SearchRank("search_vector", search_query),
                 similarity=Greatest(
                     TrigramSimilarity("canonical_name", query),
+                    TrigramSimilarity("aliases__alias", query),
                     TrigramSimilarity("brand_name", query),
                     TrigramSimilarity("search_text", query),
                 ),
@@ -87,14 +88,21 @@ class FoodSearchView(generics.ListAPIView):
                 | Q(aliases__alias__icontains=query)
             )
             queryset = queryset.order_by(
-                "-verified",
                 "-match_priority",
+                "-verified",
+                "-source__reliability_score",
+                "-data_quality_score",
                 "-search_rank",
                 "-similarity",
                 "canonical_name",
             )
         else:
-            queryset = queryset.order_by("-verified", "canonical_name")
+            queryset = queryset.order_by(
+                "-verified",
+                "-source__reliability_score",
+                "-data_quality_score",
+                "canonical_name",
+            )
 
         return queryset.distinct()
 

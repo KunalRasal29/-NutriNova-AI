@@ -349,7 +349,7 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
     call_command("seed_popular_foods")
 
     source = NutritionDataSource.objects.get(name="Manual Admin Sample")
-    assert Food.objects.filter(source=source).count() >= 110
+    assert Food.objects.filter(source=source).count() >= 245
 
     chicken_curry = Food.objects.get(source=source, canonical_name="Chicken curry")
     assert chicken_curry.servings.get(is_default=True).grams == Decimal("220.00")
@@ -361,6 +361,20 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
 
     assert Food.objects.filter(source=source, aliases__alias="besan chilla").exists()
     assert Food.objects.filter(source=source, aliases__alias="protein shake").exists()
+    assert Food.objects.filter(source=source, aliases__alias="bhindi").exists()
+    assert Food.objects.filter(source=source, aliases__alias="maggi").exists()
+    assert Food.objects.filter(source=source, aliases__alias="coke").exists()
+    assert Food.objects.filter(
+        source=source,
+        food_type=Food.FoodType.BRANDED,
+        brand_name="Nestle",
+        canonical_name="Maggi 2-Minute Noodles Masala",
+    ).exists()
+    assert Food.objects.filter(
+        source=source,
+        food_type=Food.FoodType.RESTAURANT,
+        canonical_name="Margherita pizza",
+    ).exists()
 
     api_client.force_authenticate(user=user)
     response = api_client.get(reverse("food-search"), {"q": "chapati"})
@@ -371,6 +385,42 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
     assert response.status_code == 200
     names = {result["name"] for result in response.json()["results"]}
     assert "Protein shake with milk" in names
+
+    response = api_client.get(reverse("food-search"), {"q": "bhindi"})
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "Okra, cooked"
+
+    response = api_client.get(reverse("food-search"), {"q": "maggi"})
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "Maggi 2-Minute Noodles Masala"
+
+    response = api_client.get(reverse("food-search"), {"q": "coke"})
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "Coca-Cola Original Taste"
+
+
+@pytest.mark.django_db
+def test_food_search_exact_match_beats_verified_partial_match(api_client, user):
+    call_command("seed_popular_foods")
+    source = NutritionDataSource.objects.get(name="Manual Admin Sample")
+    Food.objects.create(
+        canonical_name="Banana protein snack",
+        food_type=Food.FoodType.BRANDED,
+        source=source,
+        external_id="SEARCH-VERIFIED-BANANA-SNACK",
+        country_code="IN",
+        serving_description="1 bar",
+        default_serving_g=Decimal("50.00"),
+        data_quality_score=Decimal("0.9900"),
+        verified=True,
+        brand_name="Search Test",
+    )
+
+    api_client.force_authenticate(user=user)
+    response = api_client.get(reverse("food-search"), {"q": "banana"})
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "Banana"
 
 
 @pytest.mark.django_db
