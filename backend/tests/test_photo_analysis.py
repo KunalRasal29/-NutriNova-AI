@@ -492,10 +492,15 @@ def test_egg_quantity_increment_updates_grams_and_preview(
 
     assert response.status_code == 200, response.json()
     payload = response.json()
-    assert Decimal(str(payload["effective_quantity_value"])) == Decimal("6.000")
-    assert Decimal(str(payload["effective_total_grams"])) == Decimal("300.000")
-    assert Decimal(str(payload["calories_kcal"])) == Decimal("465.000")
-    assert Decimal(str(payload["protein_g"])) == Decimal("37.800")
+    item = payload["items"][0]
+    assert payload["analysis_id"] == upload_response.json()["id"]
+    assert Decimal(str(item["effective_quantity_value"])) == Decimal("6.000")
+    assert Decimal(str(item["effective_total_grams"])) == Decimal("300.000")
+    assert Decimal(str(item["calories_kcal"])) == Decimal("465.000")
+    assert Decimal(str(item["protein_g"])) == Decimal("37.800")
+    assert Decimal(str(payload["total_preview"]["calories_kcal"])) == Decimal(
+        "465.000"
+    )
 
 
 @pytest.mark.django_db
@@ -518,9 +523,13 @@ def test_decrement_quantity_updates_preview(api_client, user, egg_food, tmp_path
 
     assert response.status_code == 200, response.json()
     payload = response.json()
-    assert Decimal(str(payload["effective_quantity_value"])) == Decimal("4.000")
-    assert Decimal(str(payload["effective_total_grams"])) == Decimal("200.000")
-    assert Decimal(str(payload["calories_kcal"])) == Decimal("310.000")
+    item = payload["items"][0]
+    assert Decimal(str(item["effective_quantity_value"])) == Decimal("4.000")
+    assert Decimal(str(item["effective_total_grams"])) == Decimal("200.000")
+    assert Decimal(str(item["calories_kcal"])) == Decimal("310.000")
+    assert Decimal(str(payload["total_preview"]["calories_kcal"])) == Decimal(
+        "310.000"
+    )
 
 
 @pytest.mark.django_db
@@ -547,7 +556,9 @@ def test_user_removes_detected_food_without_deleting_it(
     )
 
     assert response.status_code == 200, response.json()
-    assert response.json()["is_removed"] is True
+    payload = response.json()
+    removed_item = next(item for item in payload["items"] if item["id"] == detected_id)
+    assert removed_item["is_removed"] is True
     detected = PhotoDetectedFood.objects.get(id=detected_id)
     assert detected.is_removed is True
     assert detected.correction_note == "Not actually food."

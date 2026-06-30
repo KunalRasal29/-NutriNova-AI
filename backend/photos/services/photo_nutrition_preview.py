@@ -8,6 +8,7 @@ from django.db.models import Q
 from foods.models import Food, FoodServing
 from nutrition.calculations import calculate_food_snapshot, quantize_decimal
 from photos.models import PhotoDetectedFood
+from photos.url_utils import public_image_url
 
 LOW_CONFIDENCE_THRESHOLD = Decimal("0.7000")
 COUNTABLE_UNITS = {
@@ -412,15 +413,10 @@ def meal_preview_for_analysis(analysis) -> dict:
 
 def review_payload(analysis, request=None) -> dict:
     preview = meal_preview_for_analysis(analysis)
-    image_url = ""
-    if analysis.image:
-        image_url = analysis.image.url
-        if request:
-            image_url = request.build_absolute_uri(image_url)
     return {
         "analysis_id": analysis.id,
         "status": analysis.status,
-        "image_url": image_url,
+        "image_url": public_image_url(analysis.image, request),
         "disclaimer": (
             "Photo nutrition is an estimate. Confirm food and portion size for "
             "better accuracy."

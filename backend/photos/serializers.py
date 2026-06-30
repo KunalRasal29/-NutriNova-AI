@@ -11,6 +11,7 @@ from meals.serializers import MealLogSerializer
 from photos.models import NutritionLabelScan, PhotoAnalysis, PhotoDetectedFood
 from photos.providers import PHOTO_DISCLAIMER
 from photos.services.photo_nutrition_preview import visible_foods_for_user
+from photos.url_utils import public_image_url
 from photos.validators import validate_uploaded_image
 
 
@@ -110,11 +111,7 @@ class PhotoAnalysisDetailSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField)
     def get_image_url(self, obj):
-        request = self.context.get("request")
-        if not obj.image:
-            return ""
-        url = obj.image.url
-        return request.build_absolute_uri(url) if request else url
+        return public_image_url(obj.image, self.context.get("request"))
 
     @extend_schema_field(serializers.CharField)
     def get_disclaimer(self, obj):

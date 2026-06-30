@@ -1,6 +1,6 @@
 DOCKER_COMPOSE ?= docker compose
 
-.PHONY: up down backend-shell migrate test lint createsuperuser
+.PHONY: up down backend-shell migrate ensure-local-storage test lint createsuperuser
 
 up:
 	$(DOCKER_COMPOSE) up --build
@@ -14,6 +14,9 @@ backend-shell:
 migrate:
 	$(DOCKER_COMPOSE) run --rm backend python manage.py migrate
 
+ensure-local-storage:
+	$(DOCKER_COMPOSE) run --rm backend python manage.py ensure_local_storage
+
 test:
 	$(DOCKER_COMPOSE) run --rm backend pytest
 
@@ -22,4 +25,3 @@ lint:
 
 createsuperuser:
 	$(DOCKER_COMPOSE) run --rm backend python manage.py createsuperuser
-

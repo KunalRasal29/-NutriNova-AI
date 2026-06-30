@@ -19,6 +19,13 @@ class ProfileSettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(NovaSpacing.lg),
         children: [
+          const PageIntro(
+            title: 'NutriNova AI',
+            subtitle:
+                'Privacy-first wellness tracking with verified sources, user custom foods, and reviewed AI estimates.',
+            icon: Icons.bolt_rounded,
+          ),
+          const SizedBox(height: NovaSpacing.lg),
           NovaCard(
             child: ListTile(
               contentPadding: EdgeInsets.zero,
@@ -70,6 +77,11 @@ class ProfileSettingsScreen extends ConsumerWidget {
                   icon: Icons.health_and_safety_outlined,
                   title: 'Health disclaimer',
                   subtitle: 'Wellness tracking only. Not medical diagnosis.',
+                ),
+                const _SettingsTile(
+                  icon: Icons.info_outline,
+                  title: 'App version',
+                  subtitle: 'NutriNova AI mobile 0.1.0',
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,

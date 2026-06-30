@@ -8,9 +8,9 @@ class AppConfig {
     return const AppConfig(
       apiBaseUrl: String.fromEnvironment(
         'API_BASE_URL',
-        defaultValue: 'http://127.0.0.1:8000',
+        defaultValue: 'http://localhost:8000',
       ),
-      mockMode: bool.fromEnvironment('MOCK_MODE', defaultValue: true),
+      mockMode: bool.fromEnvironment('MOCK_MODE', defaultValue: false),
     );
   }
 

@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 
 class NovaColors {
-  static const ink = Color(0xFF18211F);
-  static const surface = Color(0xFFF7F8F4);
-  static const panel = Color(0xFFFFFFFF);
-  static const mint = Color(0xFF14A38B);
-  static const lime = Color(0xFF9CCB3B);
-  static const coral = Color(0xFFE66F51);
-  static const gold = Color(0xFFE3A635);
-  static const violet = Color(0xFF7765D8);
-  static const graphite = Color(0xFF5E6964);
-  static const border = Color(0xFFE2E8E2);
-  static const danger = Color(0xFFD64949);
+  static const ink = Color(0xFF10121E);
+  static const surface = Color(0xFF121420);
+  static const panel = Color(0xFF222432);
+  static const panelRaised = Color(0xFF2A2D3B);
+  static const panelSoft = Color(0xFF191B27);
+  static const mint = Color(0xFF20D59B);
+  static const blue = Color(0xFF4DA3FF);
+  static const lime = Color(0xFFB6E35B);
+  static const coral = Color(0xFFFF6B7B);
+  static const gold = Color(0xFFFFC857);
+  static const violet = Color(0xFFA58BFF);
+  static const graphite = Color(0xFF9CA3B8);
+  static const muted = Color(0xFF6E7488);
+  static const border = Color(0xFF333647);
+  static const danger = Color(0xFFFF5A68);
 }
 
 class NovaSpacing {
@@ -50,17 +54,31 @@ class NovaTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        color: NovaColors.panel,
+        color: NovaColors.panelRaised,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: NovaColors.border),
+          side: BorderSide(color: NovaColors.border.withValues(alpha: 0.75)),
         ),
+      ),
+      textTheme: Typography.whiteCupertino.apply(
+        fontFamily: 'Roboto',
+        bodyColor: Colors.white,
+        displayColor: Colors.white,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: NovaColors.border,
+        thickness: 1,
+        space: 1,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: NovaColors.panel,
+        fillColor: NovaColors.panelSoft,
+        hintStyle: const TextStyle(color: NovaColors.muted),
+        labelStyle: const TextStyle(color: NovaColors.graphite),
+        prefixIconColor: NovaColors.graphite,
+        suffixIconColor: NovaColors.graphite,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: NovaColors.border),
@@ -77,7 +95,7 @@ class NovaTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           elevation: 0,
-          backgroundColor: NovaColors.ink,
+          backgroundColor: NovaColors.blue,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -86,7 +104,7 @@ class NovaTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: NovaColors.ink,
+          foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(48),
           side: const BorderSide(color: NovaColors.border),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -100,25 +118,32 @@ class NovaTheme {
     final base = light();
     return base.copyWith(
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF111614),
+      scaffoldBackgroundColor: NovaColors.surface,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: NovaColors.mint,
+        seedColor: NovaColors.blue,
         brightness: Brightness.dark,
-        primary: NovaColors.mint,
+        primary: NovaColors.blue,
         secondary: NovaColors.coral,
+        surface: NovaColors.surface,
       ),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF111614),
+        centerTitle: true,
+        backgroundColor: NovaColors.surface,
         foregroundColor: Colors.white,
         elevation: 0,
+        titleTextStyle: TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+        ),
       ),
       cardTheme: CardThemeData(
-        color: const Color(0xFF18211F),
+        color: NovaColors.panel,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: Color(0xFF2B3834)),
+          side: const BorderSide(color: NovaColors.border),
         ),
       ),
     );

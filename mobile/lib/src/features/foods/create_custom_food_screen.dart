@@ -7,7 +7,9 @@ import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
 
 class CreateCustomFoodScreen extends ConsumerStatefulWidget {
-  const CreateCustomFoodScreen({super.key});
+  const CreateCustomFoodScreen({this.initialBarcode = '', super.key});
+
+  final String initialBarcode;
 
   @override
   ConsumerState<CreateCustomFoodScreen> createState() =>
@@ -27,8 +29,15 @@ class _CreateCustomFoodScreenState
   final _fiber = TextEditingController();
   final _sugar = TextEditingController();
   final _sodium = TextEditingController();
+  late final TextEditingController _barcode;
   final _notes = TextEditingController();
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _barcode = TextEditingController(text: widget.initialBarcode);
+  }
 
   @override
   void dispose() {
@@ -44,6 +53,7 @@ class _CreateCustomFoodScreenState
       _fiber,
       _sugar,
       _sodium,
+      _barcode,
       _notes,
     ]) {
       controller.dispose();
@@ -71,6 +81,21 @@ class _CreateCustomFoodScreenState
             classification: 'user_custom',
           ),
           const SizedBox(height: NovaSpacing.lg),
+          if (widget.initialBarcode.isNotEmpty) ...[
+            NovaCard(
+              child: Row(
+                children: [
+                  const Icon(Icons.qr_code_2_outlined),
+                  const SizedBox(width: NovaSpacing.md),
+                  Expanded(
+                    child:
+                        Text('Creating from barcode ${widget.initialBarcode}'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: NovaSpacing.md),
+          ],
           TextField(
             controller: _name,
             decoration: const InputDecoration(labelText: 'Food name'),
@@ -131,6 +156,15 @@ class _CreateCustomFoodScreenState
             maxLines: 3,
             decoration: const InputDecoration(labelText: 'Notes'),
           ),
+          const SizedBox(height: NovaSpacing.md),
+          TextField(
+            controller: _barcode,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Barcode optional',
+              prefixIcon: Icon(Icons.qr_code_2_outlined),
+            ),
+          ),
           const SizedBox(height: NovaSpacing.lg),
           NovaButton.primary(
             label: _saving ? 'Saving...' : 'Save custom food',
@@ -138,22 +172,32 @@ class _CreateCustomFoodScreenState
             onPressed: _saving
                 ? null
                 : () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final validationMessage = _validationMessage();
+                    if (validationMessage != null) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text(validationMessage)),
+                      );
+                      return;
+                    }
                     setState(() => _saving = true);
                     try {
-                      await ref
+                      final food = await ref
                           .read(nutritionRepositoryProvider)
                           .createCustomFood(_payload());
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Custom food saved')),
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                              'Custom food saved. Choose quantity to log it.'),
+                        ),
                       );
-                      context.go('/foods/search');
+                      context.go('/foods/${food.id}');
                     } catch (error) {
                       if (!context.mounted) return;
                       setState(() => _saving = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(error.toString())),
-                      );
+                      messenger.showSnackBar(
+                          SnackBar(content: Text(error.toString())));
                     }
                   },
           ),
@@ -189,7 +233,28 @@ class _CreateCustomFoodScreenState
     putIfPresent('fiber_g', _fiber);
     putIfPresent('sugar_g', _sugar);
     putIfPresent('sodium_mg', _sodium);
+    putIfPresent('barcode', _barcode);
     putIfPresent('notes', _notes);
     return payload;
+  }
+
+  String? _validationMessage() {
+    if (_name.text.trim().isEmpty) return 'Enter a food name.';
+    if ((double.tryParse(_grams.text.trim()) ?? 0) <= 0) {
+      return 'Enter serving grams greater than 0.';
+    }
+    final hasCalories = _calories.text.trim().isNotEmpty;
+    final hasMacro = [
+      _protein,
+      _carbs,
+      _fat,
+      _fiber,
+      _sugar,
+      _sodium,
+    ].any((controller) => controller.text.trim().isNotEmpty);
+    if (!hasCalories && !hasMacro) {
+      return 'Enter calories or at least one macro.';
+    }
+    return null;
   }
 }

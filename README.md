@@ -13,35 +13,47 @@ Health disclaimer: NutriNova AI is for wellness tracking and education only. It 
 - Tests: pytest and Flutter tests
 - CI: GitHub Actions for backend tests/lint and Flutter analyze/tests
 
-## Local Setup On macOS
+## Local Setup On Kunal's Mac
 
-1. Install Docker Desktop.
-2. Install Flutter stable and Xcode or Android Studio if you want to run mobile.
-3. Copy env values:
+Use the existing project folder. Do not create a new project or move files.
+
+```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit
+```
+
+First-time setup:
 
 ```bash
 cp .env.example .env
-```
-
-4. Start services:
-
-```bash
-make up
-```
-
-5. In a second terminal, migrate and seed core data:
-
-```bash
-make migrate
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose run --rm backend python manage.py migrate
 docker compose run --rm backend python manage.py seed_core_nutrition
 docker compose run --rm backend python manage.py import_usda_fdc_sample
 docker compose run --rm backend python manage.py import_openfoodfacts_sample
+docker compose run --rm backend python manage.py ensure_local_storage
 ```
 
-6. Create an admin user:
+Normal daily backend start:
 
 ```bash
-make createsuperuser
+cd /Users/kunalrasal/Documents/LaPulgaFit
+docker compose up -d
+docker compose ps
+curl http://localhost:8000/api/health/
+```
+
+Open API docs:
+
+```bash
+open http://localhost:8000/api/docs/
+```
+
+Create an admin user when needed:
+
+```bash
+docker compose run --rm backend python manage.py createsuperuser
 ```
 
 ## Useful URLs
@@ -59,6 +71,7 @@ make up
 make down
 make backend-shell
 make migrate
+make ensure-local-storage
 make test
 make lint
 make createsuperuser
@@ -68,7 +81,7 @@ Direct examples:
 
 ```bash
 docker compose build
-docker compose up
+docker compose up -d
 docker compose run --rm backend pytest
 docker compose run --rm backend python manage.py migrate
 ```
@@ -76,38 +89,62 @@ docker compose run --rm backend python manage.py migrate
 ## Mobile Setup
 
 ```bash
-cd mobile
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
 flutter pub get
+dart format .
 flutter analyze
 flutter test
 ```
 
-Run in mock mode:
+Run in mock mode without the backend:
 
 ```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
 flutter run --dart-define=MOCK_MODE=true
 ```
 
-Run against local backend on iOS simulator:
+Run against the local backend on iOS simulator:
 
 ```bash
-flutter run --dart-define=MOCK_MODE=false --dart-define=API_BASE_URL=http://127.0.0.1:8000
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter run -d ios --dart-define=API_BASE_URL=http://localhost:8000
 ```
 
-Run against local backend on Android emulator:
+Run against the local backend on Android emulator:
 
 ```bash
-flutter run --dart-define=MOCK_MODE=false --dart-define=API_BASE_URL=http://10.0.2.2:8000
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter run -d android --dart-define=API_BASE_URL=http://10.0.2.2:8000
 ```
 
-Run on a physical phone on the same Wi-Fi:
+Run on a real iPhone or Android phone on the same Wi-Fi:
 
 ```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit
 ipconfig getifaddr en0
-flutter run --dart-define=MOCK_MODE=false --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
 ```
 
-For physical phone testing, add your Mac LAN IP to `DJANGO_ALLOWED_HOSTS` and add the matching origin to CORS settings in `.env`.
+Add that IP to `DJANGO_ALLOWED_HOSTS` in `.env`, then restart the backend:
+
+```bash
+docker compose restart backend
+```
+
+Then run Flutter with your Mac IP:
+
+```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter run --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
+```
+
+Backend and MinIO already bind to `0.0.0.0` through Docker Compose. The phone and Mac must be on the same Wi-Fi. Native iOS/Android builds do not need CORS, but Flutter web does.
+
+API base URL quick map:
+
+- iOS simulator: `http://localhost:8000`
+- Android emulator: `http://10.0.2.2:8000`
+- Real phone: `http://YOUR_MAC_LAN_IP:8000`
+- Production later: your HTTPS API domain
 
 ## Nutrition Import Commands
 
@@ -179,10 +216,12 @@ After setup, a new developer can verify the core app loop with these steps:
 
 ```bash
 cp .env.example .env
-make up
+docker compose up -d
 make migrate
 docker compose run --rm backend python manage.py seed_core_nutrition
 docker compose run --rm backend python manage.py import_usda_fdc_sample
+docker compose run --rm backend python manage.py import_openfoodfacts_sample
+make ensure-local-storage
 ```
 
 2. Open Swagger at http://localhost:8000/api/docs/ or run the Flutter app with `MOCK_MODE=false`.
@@ -233,7 +272,8 @@ Never expose API keys to Flutter. Only the backend should call AI providers.
 - Port already used: stop the process using ports `8000`, `5432`, `6379`, `9000`, or `9001`.
 - Flutter cannot see iOS simulator: run `flutter doctor` and open Xcode once.
 - Android emulator cannot reach backend: use `http://10.0.2.2:8000`.
-- Physical phone cannot reach backend: use your Mac LAN IP and update allowed hosts/CORS.
+- Physical phone cannot reach backend: use your Mac LAN IP, keep both devices on the same Wi-Fi, add the IP to `DJANGO_ALLOWED_HOSTS`, and restart the backend.
+- Photo preview image does not load: run `make ensure-local-storage` and confirm port `9000` is reachable from the simulator or phone.
 - MinIO credentials fail: confirm `.env` values match the MinIO service environment.
 
 ## Verification

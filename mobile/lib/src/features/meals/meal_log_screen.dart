@@ -14,12 +14,12 @@ class MealLogScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final meals = ref.watch(todayMealLogsProvider);
     return NovaScaffold(
-      title: 'Meal log',
+      title: 'Diary',
       actions: [
         IconButton(
-          tooltip: 'Quick add',
-          icon: const Icon(Icons.flash_on_outlined),
-          onPressed: () => context.go('/meals/quick-add'),
+          tooltip: 'Search food',
+          icon: const Icon(Icons.search),
+          onPressed: () => context.go('/foods/search'),
         ),
       ],
       body: meals.when(
@@ -29,35 +29,25 @@ class MealLogScreen extends ConsumerWidget {
             ref.invalidate(dashboardProvider);
           },
           child: ListView(
-            padding: const EdgeInsets.all(NovaSpacing.lg),
+            padding: const EdgeInsets.fromLTRB(
+              NovaSpacing.lg,
+              NovaSpacing.lg,
+              NovaSpacing.lg,
+              110,
+            ),
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: NovaButton.primary(
-                      label: 'Manual add',
-                      icon: Icons.add,
-                      onPressed: () => context.go('/meals/manual'),
-                    ),
-                  ),
-                  const SizedBox(width: NovaSpacing.md),
-                  Expanded(
-                    child: NovaButton.secondary(
-                      label: 'Search',
-                      icon: Icons.search,
-                      onPressed: () => context.go('/foods/search'),
-                    ),
-                  ),
-                ],
-              ),
+              _CaloriesRemainingHeader(logs: logs),
               const SizedBox(height: NovaSpacing.lg),
-              if (logs.isEmpty)
-                const _EmptyMealLog()
-              else
-                for (final log in logs) ...[
-                  _MealLogCard(log: log),
-                  const SizedBox(height: NovaSpacing.md),
-                ],
+              _FastActions(),
+              const SizedBox(height: NovaSpacing.lg),
+              _MealSection(
+                title: 'Breakfast',
+                mealType: 'breakfast',
+                logs: logs,
+              ),
+              _MealSection(title: 'Lunch', mealType: 'lunch', logs: logs),
+              _MealSection(title: 'Dinner', mealType: 'dinner', logs: logs),
+              _MealSection(title: 'Snacks', mealType: 'snack', logs: logs),
             ],
           ),
         ),
@@ -71,37 +61,41 @@ class MealLogScreen extends ConsumerWidget {
   }
 }
 
-class _EmptyMealLog extends StatelessWidget {
-  const _EmptyMealLog();
+class _CaloriesRemainingHeader extends StatelessWidget {
+  const _CaloriesRemainingHeader({required this.logs});
+
+  final List<MealLogSummary> logs;
 
   @override
   Widget build(BuildContext context) {
+    final foodCalories = logs.fold<double>(
+      0,
+      (total, log) => total + log.totalCalories,
+    );
+    const goal = 2200.0;
+    final remaining = goal - foodCalories;
     return NovaCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SectionHeader(title: 'No meals logged yet'),
-          const SizedBox(height: NovaSpacing.sm),
           const Text(
-            'Search foods, use quick add, or scan a meal photo to start today’s log.',
+            'Calories Remaining',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: NovaSpacing.lg),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: NovaButton.primary(
-                  label: 'Search',
-                  icon: Icons.search,
-                  onPressed: () => context.go('/foods/search'),
-                ),
-              ),
-              const SizedBox(width: NovaSpacing.md),
-              Expanded(
-                child: NovaButton.secondary(
-                  label: 'AI scan',
-                  icon: Icons.camera_alt_outlined,
-                  onPressed: () => context.go('/photos/scan'),
-                ),
+              _MathPart(value: goal, label: 'Goal'),
+              const _MathSymbol('-'),
+              _MathPart(value: foodCalories, label: 'Food'),
+              const _MathSymbol('+'),
+              const _MathPart(value: 0, label: 'Exercise'),
+              const _MathSymbol('='),
+              _MathPart(
+                value: remaining.clamp(0, 9999).toDouble(),
+                label: 'Remaining',
+                color: NovaColors.blue,
               ),
             ],
           ),
@@ -111,43 +105,226 @@ class _EmptyMealLog extends StatelessWidget {
   }
 }
 
-class _MealLogCard extends StatelessWidget {
-  const _MealLogCard({required this.log});
+class _MathPart extends StatelessWidget {
+  const _MathPart({
+    required this.value,
+    required this.label,
+    this.color = Colors.white,
+  });
 
-  final MealLogSummary log;
+  final double value;
+  final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return NovaCard(
+    return Expanded(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SectionHeader(
-            title: _mealTitle(log),
-            action: Text(
-              '${log.totalCalories.toStringAsFixed(0)} kcal',
-              style: const TextStyle(fontWeight: FontWeight.w900),
+          Text(
+            value.toStringAsFixed(0),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          if (log.items.isEmpty) ...[
-            const SizedBox(height: NovaSpacing.sm),
-            const Text('No foods in this meal yet.'),
-          ] else
-            for (final item in log.items) _MealItemTile(item: item),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: NovaColors.graphite,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  String _mealTitle(MealLogSummary log) {
-    if (log.name.isNotEmpty) return log.name;
-    return log.mealType
-        .replaceAll('_', ' ')
-        .split(' ')
-        .map((part) => part.isEmpty
-            ? part
-            : '${part[0].toUpperCase()}${part.substring(1)}')
-        .join(' ');
+class _MathSymbol extends StatelessWidget {
+  const _MathSymbol(this.symbol);
+
+  final String symbol;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Text(
+        symbol,
+        style: const TextStyle(
+          color: NovaColors.graphite,
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _FastActions extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 4,
+      mainAxisSpacing: NovaSpacing.sm,
+      crossAxisSpacing: NovaSpacing.sm,
+      childAspectRatio: 0.95,
+      children: [
+        _ActionTile(
+          icon: Icons.qr_code_scanner,
+          label: 'Barcode',
+          onTap: () => context.go('/barcode'),
+        ),
+        _ActionTile(
+          icon: Icons.mic_none_outlined,
+          label: 'Voice log',
+          onTap: () => context.go('/meals/quick-add'),
+        ),
+        _ActionTile(
+          icon: Icons.camera_alt_outlined,
+          label: 'Meal scan',
+          onTap: () => context.go('/photos/scan'),
+        ),
+        _ActionTile(
+          icon: Icons.flash_on_outlined,
+          label: 'Quick add',
+          onTap: () => context.go('/meals/quick-add'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: NovaColors.panel,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: NovaColors.border),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: NovaColors.blue),
+            const SizedBox(height: NovaSpacing.sm),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: NovaColors.blue,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MealSection extends StatelessWidget {
+  const _MealSection({
+    required this.title,
+    required this.mealType,
+    required this.logs,
+  });
+
+  final String title;
+  final String mealType;
+  final List<MealLogSummary> logs;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      for (final log in logs)
+        if (log.mealType == mealType) ...log.items,
+    ];
+    final calories = items.fold<double>(
+      0,
+      (total, item) => total + item.caloriesKcal,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: NovaSpacing.lg),
+      child: NovaCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+              child: Row(
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    calories.toStringAsFixed(0),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
+            ),
+            if (items.isEmpty)
+              ListTile(
+                title: Text(
+                  'Add food',
+                  style: TextStyle(
+                    color: NovaColors.blue,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                trailing: const Icon(Icons.add, color: NovaColors.blue),
+                onTap: () => context.go('/foods/search'),
+              )
+            else ...[
+              for (final item in items) _MealItemTile(item: item),
+              ListTile(
+                dense: true,
+                title: const Text(
+                  'Add food',
+                  style: TextStyle(
+                    color: NovaColors.blue,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                trailing: const Icon(Icons.add, color: NovaColors.blue),
+                onTap: () => context.go('/foods/search'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -159,30 +336,16 @@ class _MealItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.restaurant_menu),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       title: Text(item.foodName),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: NovaSpacing.xs),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${item.quantity.toStringAsFixed(1)} ${item.unit} • '
-              '${item.grams.toStringAsFixed(0)}g',
-            ),
-            const SizedBox(height: NovaSpacing.xs),
-            SourceConfidenceBadges(
-              source: item.source,
-              confidence: item.confidence,
-              verified: item.verified,
-              classification: item.classification,
-            ),
-          ],
-        ),
+      subtitle: Text(
+        '${item.quantity.toStringAsFixed(1)} ${item.unit} • '
+        '${item.grams.toStringAsFixed(0)}g',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       trailing: Text(
-        '${item.caloriesKcal.toStringAsFixed(0)} kcal',
+        item.caloriesKcal.toStringAsFixed(0),
         style: const TextStyle(fontWeight: FontWeight.w900),
       ),
     );

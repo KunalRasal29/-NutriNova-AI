@@ -9,6 +9,7 @@ abstract class NutritionRepository {
     DateTime? recordedOn,
   });
   Future<List<FoodSummary>> searchFoods(String query);
+  Future<List<FoodSummary>> lookupBarcode(String barcode);
   Future<FoodDetail> foodDetail(String foodId);
   Future<List<MealLogSummary>> mealsForDate(DateTime date);
   Future<MacroPreview> manualFoodPreview({
@@ -26,7 +27,13 @@ abstract class NutritionRepository {
   });
   Future<Map<String, dynamic>> quickAdd(String text, String mealType);
   Future<void> confirmQuickAdd(Map<String, dynamic> payload);
-  Future<void> createCustomFood(Map<String, dynamic> payload);
+  Future<FoodDetail> createCustomFood(Map<String, dynamic> payload);
+  Future<Map<String, dynamic>> createRecipe(Map<String, dynamic> payload);
+  Future<Map<String, dynamic>> calculateRecipe(String recipeId);
+  Future<void> logRecipeAsMeal({
+    required String recipeId,
+    required String mealType,
+  });
   Future<List<HabitGridItem>> todayHabits();
   Future<void> checkHabit(String habitId, int completedCount);
   Future<void> uncheckHabit(String habitId);
@@ -141,6 +148,19 @@ class ApiNutritionRepository implements NutritionRepository {
   }
 
   @override
+  Future<List<FoodSummary>> lookupBarcode(String barcode) async {
+    final response = await _apiClient.get(
+      '/api/foods/search/',
+      queryParameters: {'barcode': barcode},
+    );
+    final data = response.data as Map<String, dynamic>;
+    final results = data['results'] as List<dynamic>? ?? const [];
+    return results
+        .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
   Future<FoodDetail> foodDetail(String foodId) async {
     final response = await _apiClient.get('/api/foods/$foodId/');
     return FoodDetail.fromJson(response.data as Map<String, dynamic>);
@@ -218,8 +238,38 @@ class ApiNutritionRepository implements NutritionRepository {
   }
 
   @override
-  Future<void> createCustomFood(Map<String, dynamic> payload) async {
-    await _apiClient.post('/api/foods/custom/', data: payload);
+  Future<FoodDetail> createCustomFood(Map<String, dynamic> payload) async {
+    final response = await _apiClient.post('/api/foods/custom/', data: payload);
+    return FoodDetail.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Map<String, dynamic>> createRecipe(
+      Map<String, dynamic> payload) async {
+    final response = await _apiClient.post('/api/recipes/', data: payload);
+    return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> calculateRecipe(String recipeId) async {
+    final response = await _apiClient.post('/api/recipes/$recipeId/calculate/');
+    return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<void> logRecipeAsMeal({
+    required String recipeId,
+    required String mealType,
+  }) async {
+    await _apiClient.post(
+      '/api/recipes/$recipeId/log-as-meal/',
+      data: {
+        'date': _dateString(DateTime.now()),
+        'meal_type': mealType,
+        'quantity': '1.000',
+        'unit': 'serving',
+      },
+    );
   }
 
   @override
@@ -536,6 +586,12 @@ class MockNutritionRepository implements NutritionRepository {
   }
 
   @override
+  Future<List<FoodSummary>> lookupBarcode(String barcode) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    return _foods.take(1).toList();
+  }
+
+  @override
   Future<FoodDetail> foodDetail(String foodId) async {
     final food = _foods.firstWhere((food) => food.id == foodId);
     return FoodDetail(
@@ -667,7 +723,59 @@ class MockNutritionRepository implements NutritionRepository {
   Future<void> confirmQuickAdd(Map<String, dynamic> payload) async {}
 
   @override
-  Future<void> createCustomFood(Map<String, dynamic> payload) async {}
+  Future<FoodDetail> createCustomFood(Map<String, dynamic> payload) async {
+    return FoodDetail(
+      id: 'custom-food',
+      name: payload['name']?.toString() ?? 'Custom food',
+      brand: payload['brand']?.toString() ?? '',
+      description: payload['notes']?.toString() ?? '',
+      sourceBadge: 'USER_CUSTOM',
+      confidenceScore: 0.5,
+      dataClassification: 'user_custom',
+      verified: false,
+      defaultServingG: _asDouble(payload['serving_grams'], fallback: 100),
+      servings: [
+        FoodServingOption(
+          id: 'custom-serving',
+          name: payload['serving_name']?.toString() ?? '1 serving',
+          grams: _asDouble(payload['serving_grams'], fallback: 100),
+          isDefault: true,
+        ),
+      ],
+      nutrients: const [],
+      isFavorite: false,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> createRecipe(
+      Map<String, dynamic> payload) async {
+    return {
+      'id': 'mock-recipe',
+      'name': payload['name']?.toString() ?? 'Mock recipe',
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> calculateRecipe(String recipeId) async {
+    return {
+      'recipe_id': recipeId,
+      'per_serving': {
+        'calories': 420,
+        'protein_g': 31,
+        'carbs_g': 42,
+        'fat_g': 14,
+      },
+      'total_weight_g': 350,
+      'ingredients': <Map<String, dynamic>>[],
+    };
+  }
+
+  @override
+  Future<void> logRecipeAsMeal({
+    required String recipeId,
+    required String mealType,
+  }) async {}
 
   @override
   Future<List<HabitGridItem>> todayHabits() async => (await dashboard()).habits;

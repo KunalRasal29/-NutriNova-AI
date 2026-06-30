@@ -116,6 +116,11 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
             children: [
               const SectionHeader(title: 'Log amount'),
               const SizedBox(height: NovaSpacing.md),
+              MealTypeSelector(
+                value: _mealType,
+                onChanged: (value) => setState(() => _mealType = value),
+              ),
+              const SizedBox(height: NovaSpacing.md),
               Row(
                 children: [
                   Expanded(
@@ -153,20 +158,6 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
                   prefixIcon: Icon(Icons.scale_outlined),
                 ),
                 onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: NovaSpacing.md),
-              DropdownButtonFormField<String>(
-                initialValue: _mealType,
-                decoration: const InputDecoration(labelText: 'Meal'),
-                items: const [
-                  DropdownMenuItem(
-                      value: 'breakfast', child: Text('Breakfast')),
-                  DropdownMenuItem(value: 'lunch', child: Text('Lunch')),
-                  DropdownMenuItem(value: 'dinner', child: Text('Dinner')),
-                  DropdownMenuItem(value: 'snack', child: Text('Snack')),
-                ],
-                onChanged: (value) =>
-                    setState(() => _mealType = value ?? _mealType),
               ),
             ],
           ),
@@ -240,32 +231,14 @@ class _NutritionPreview extends StatelessWidget {
         children: [
           const SectionHeader(title: 'Nutrition preview'),
           const SizedBox(height: NovaSpacing.md),
-          Text(
-            '${preview.caloriesKcal.toStringAsFixed(0)} kcal',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-          ),
-          const SizedBox(height: NovaSpacing.xs),
           Text('${grams.toStringAsFixed(0)}g total'),
           const SizedBox(height: NovaSpacing.md),
-          Wrap(
-            spacing: NovaSpacing.sm,
-            runSpacing: NovaSpacing.sm,
-            children: [
-              NovaBadge(
-                label: 'Protein ${preview.proteinG.toStringAsFixed(1)}g',
-                color: NovaColors.coral,
-              ),
-              NovaBadge(
-                label: 'Carbs ${preview.carbsG.toStringAsFixed(1)}g',
-                color: NovaColors.gold,
-              ),
-              NovaBadge(
-                label: 'Fat ${preview.fatG.toStringAsFixed(1)}g',
-                color: NovaColors.violet,
-              ),
-            ],
+          NutritionPreviewBar(
+            caloriesKcal: preview.caloriesKcal,
+            proteinG: preview.proteinG,
+            carbsG: preview.carbsG,
+            fatG: preview.fatG,
+            compact: true,
           ),
         ],
       ),

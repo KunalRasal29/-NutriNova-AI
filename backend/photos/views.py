@@ -287,17 +287,24 @@ class PhotoDetectedFoodDetailView(PhotoDetectedFoodBaseView):
         detected = self.get_object()
         serializer = self.get_serializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        preview = update_detected_food(detected, serializer.validated_data)
-        return Response(preview)
+        update_detected_food(detected, serializer.validated_data)
+        detected.photo_analysis.refresh_from_db()
+        return Response(review_payload(detected.photo_analysis, request=request))
 
 
 class IncrementDetectedFoodView(PhotoDetectedFoodBaseView):
     @extend_schema(tags=["photos"], responses={200: PhotoReviewResponseSerializer})
     def post(self, request, *args, **kwargs):
-        return Response(increment_detected_food(self.get_object()))
+        detected = self.get_object()
+        increment_detected_food(detected)
+        detected.photo_analysis.refresh_from_db()
+        return Response(review_payload(detected.photo_analysis, request=request))
 
 
 class DecrementDetectedFoodView(PhotoDetectedFoodBaseView):
     @extend_schema(tags=["photos"], responses={200: PhotoReviewResponseSerializer})
     def post(self, request, *args, **kwargs):
-        return Response(decrement_detected_food(self.get_object()))
+        detected = self.get_object()
+        decrement_detected_food(detected)
+        detected.photo_analysis.refresh_from_db()
+        return Response(review_payload(detected.photo_analysis, request=request))

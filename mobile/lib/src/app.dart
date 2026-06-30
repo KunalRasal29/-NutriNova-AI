@@ -16,7 +16,7 @@ class NutriNovaApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: NovaTheme.light(),
       darkTheme: NovaTheme.dark(),
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark,
       routerConfig: router,
     );
   }

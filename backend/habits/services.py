@@ -298,8 +298,13 @@ def recompute_habit_streaks(habit: Habit, *, as_of: date | None = None) -> Habit
         ).values_list("checked_on", flat=True)
     )
 
+    current_due_dates = due_dates
+    today = timezone.localdate()
+    if due_dates and due_dates[-1] == today and due_dates[-1] not in completed_dates:
+        current_due_dates = due_dates[:-1]
+
     current_streak = 0
-    for due_date in reversed(due_dates):
+    for due_date in reversed(current_due_dates):
         if due_date in completed_dates:
             current_streak += 1
         else:

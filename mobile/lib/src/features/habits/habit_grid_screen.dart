@@ -15,72 +15,105 @@ class HabitGridScreen extends ConsumerWidget {
     return NovaScaffold(
       title: 'Checklist',
       body: habits.when(
-        data: (items) => ListView(
-          padding: const EdgeInsets.all(NovaSpacing.lg),
-          children: [
-            const SectionHeader(title: 'Today'),
-            const SizedBox(height: NovaSpacing.md),
-            if (items.isEmpty)
-              const EmptyState(
-                title: 'No active habits',
-                message:
-                    'Create habits from templates to build your daily grid.',
-                icon: Icons.check_box_outline_blank,
-              )
-            else
-              for (final item in items) ...[
-                NovaCard(
-                  child: Row(
+        data: (items) {
+          final completed = items.where((item) => item.isCompleted).length;
+          return ListView(
+            padding: const EdgeInsets.all(NovaSpacing.lg),
+            children: [
+              NovaCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SectionHeader(title: 'Today'),
+                    const SizedBox(height: NovaSpacing.sm),
+                    Text('$completed of ${items.length} complete'),
+                    const SizedBox(height: NovaSpacing.md),
+                    LinearProgressIndicator(
+                      value: items.isEmpty ? 0 : completed / items.length,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: NovaSpacing.md),
+              if (items.isEmpty)
+                const NovaCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Checkbox(
-                        value: item.isCompleted,
-                        onChanged: (checked) async {
-                          final repository =
-                              ref.read(nutritionRepositoryProvider);
-                          if (checked == true) {
-                            await repository.checkHabit(
-                              item.habitId,
-                              item.targetCount,
-                            );
-                          } else {
-                            await repository.uncheckHabit(item.habitId);
-                          }
-                          ref.invalidate(todayHabitsProvider);
-                          ref.invalidate(
-                              habitMonthGridProvider(currentMonthKey()));
-                          ref.invalidate(dashboardProvider);
-                        },
+                      EmptyState(
+                        title: 'No active habits',
+                        message:
+                            'Start with a simple daily checklist template.',
+                        icon: Icons.check_box_outline_blank,
                       ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.title,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w900),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${item.completedCount}/${item.targetCount} ${item.unit} • ${item.currentStreak} day streak',
-                              style:
-                                  const TextStyle(color: NovaColors.graphite),
-                            ),
-                          ],
-                        ),
+                      Wrap(
+                        spacing: NovaSpacing.sm,
+                        runSpacing: NovaSpacing.sm,
+                        children: [
+                          NovaBadge(label: 'Drink 8 glasses water'),
+                          NovaBadge(label: 'Log all meals'),
+                          NovaBadge(label: 'Walk 8,000 steps'),
+                          NovaBadge(label: 'Workout'),
+                        ],
                       ),
-                      const NovaBadge(label: 'Grid', icon: Icons.grid_on),
                     ],
                   ),
-                ),
-                const SizedBox(height: NovaSpacing.md),
-              ],
-            const SizedBox(height: NovaSpacing.lg),
-            const SectionHeader(title: 'Month grid'),
-            const SizedBox(height: NovaSpacing.md),
-            const _MonthGridPreview(),
-          ],
-        ),
+                )
+              else
+                for (final item in items) ...[
+                  NovaCard(
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: item.isCompleted,
+                          onChanged: (checked) async {
+                            final repository =
+                                ref.read(nutritionRepositoryProvider);
+                            if (checked == true) {
+                              await repository.checkHabit(
+                                item.habitId,
+                                item.targetCount,
+                              );
+                            } else {
+                              await repository.uncheckHabit(item.habitId);
+                            }
+                            ref.invalidate(todayHabitsProvider);
+                            ref.invalidate(
+                                habitMonthGridProvider(currentMonthKey()));
+                            ref.invalidate(dashboardProvider);
+                          },
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${item.completedCount}/${item.targetCount} ${item.unit} • ${item.currentStreak} day streak',
+                                style:
+                                    const TextStyle(color: NovaColors.graphite),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const NovaBadge(label: 'Grid', icon: Icons.grid_on),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: NovaSpacing.md),
+                ],
+              const SizedBox(height: NovaSpacing.lg),
+              const SectionHeader(title: 'Month grid'),
+              const SizedBox(height: NovaSpacing.md),
+              const _MonthGridPreview(),
+            ],
+          );
+        },
         error: (error, _) => ErrorPanel(
           message: error.toString(),
           onRetry: () => ref.invalidate(todayHabitsProvider),

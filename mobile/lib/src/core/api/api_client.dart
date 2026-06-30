@@ -11,7 +11,7 @@ class ApiException implements Exception {
   final int? statusCode;
 
   @override
-  String toString() => 'ApiException($statusCode): $message';
+  String toString() => message;
 }
 
 class ApiClient {
@@ -101,10 +101,10 @@ class ApiClient {
     try {
       return await request();
     } on DioException catch (error) {
-      final data = error.response?.data;
-      final message = data is Map && data['detail'] != null
-          ? data['detail'].toString()
-          : error.message ?? 'Something went wrong.';
+      final message = _errorMessage(
+        error.response?.data,
+        fallback: error.message ?? 'Something went wrong.',
+      );
       throw ApiException(message, statusCode: error.response?.statusCode);
     }
   }
@@ -126,4 +126,31 @@ class ApiClient {
       return false;
     }
   }
+}
+
+String _errorMessage(Object? data, {required String fallback}) {
+  if (data is Map) {
+    final error = data['error'];
+    if (error is Map && error['detail'] != null) {
+      return _detailMessage(error['detail']);
+    }
+    if (data['detail'] != null) {
+      return _detailMessage(data['detail']);
+    }
+  }
+  return fallback;
+}
+
+String _detailMessage(Object? detail) {
+  if (detail == null) return 'Something went wrong.';
+  if (detail is String) return detail;
+  if (detail is List) {
+    return detail.map(_detailMessage).join(' ');
+  }
+  if (detail is Map) {
+    return detail.entries
+        .map((entry) => '${entry.key}: ${_detailMessage(entry.value)}')
+        .join(' ');
+  }
+  return detail.toString();
 }

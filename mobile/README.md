@@ -13,22 +13,23 @@ flutter doctor
 If `ios/` or `android/` folders are missing, generate platform shells once:
 
 ```bash
-cd mobile
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
 flutter create . --platforms=ios,android
 ```
 
 ## 2. Install Packages
 
 ```bash
-cd mobile
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
 flutter pub get
 ```
 
 ## 3. Run In Mock Mode
 
-Mock mode is enabled by default so the UI works without the backend.
+Real backend mode is the default. Use mock mode only when you want the UI to work without the backend.
 
 ```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
 flutter run --dart-define=MOCK_MODE=true
 ```
 
@@ -37,50 +38,91 @@ flutter run --dart-define=MOCK_MODE=true
 Start the backend from the repository root:
 
 ```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit
 cp .env.example .env
-make up
-make migrate
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose run --rm backend python manage.py migrate
 docker compose run --rm backend python manage.py seed_core_nutrition
+docker compose run --rm backend python manage.py import_usda_fdc_sample
+docker compose run --rm backend python manage.py import_openfoodfacts_sample
+docker compose run --rm backend python manage.py ensure_local_storage
+curl http://localhost:8000/api/health/
 ```
 
 iOS simulator:
 
 ```bash
-cd mobile
-flutter run \
-  --dart-define=MOCK_MODE=false \
-  --dart-define=API_BASE_URL=http://127.0.0.1:8000
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter run -d ios \
+  --dart-define=API_BASE_URL=http://localhost:8000
 ```
 
 Android emulator:
 
 ```bash
-cd mobile
-flutter run \
-  --dart-define=MOCK_MODE=false \
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter run -d android \
   --dart-define=API_BASE_URL=http://10.0.2.2:8000
 ```
 
 Physical phone on same Wi-Fi:
 
 ```bash
-cd mobile
-flutter run \
-  --dart-define=MOCK_MODE=false \
-  --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
-```
-
-Find your Mac LAN IP:
-
-```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit
 ipconfig getifaddr en0
 ```
 
-Make sure `DJANGO_ALLOWED_HOSTS` and CORS settings in `.env` include that IP.
+Add that IP to `DJANGO_ALLOWED_HOSTS` in `.env`, restart the backend, then run:
+
+```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit
+docker compose restart backend
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter run \
+  --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
+```
+
+Backend and MinIO bind to `0.0.0.0` through Docker Compose. Your real phone and Mac must be on the same Wi-Fi, and phone photo previews also need port `9000` reachable for local MinIO images.
+
+Open backend checks:
+
+```bash
+open http://localhost:8000/api/docs/
+curl http://localhost:8000/api/health/
+```
+
+Native iOS/Android builds do not need CORS. Flutter web does.
+
+### Local Backend URL Cheat Sheet
+
+- iOS simulator: `http://localhost:8000`
+- Android emulator: `http://10.0.2.2:8000`
+- Physical iPhone/Android phone: `http://YOUR_MAC_LAN_IP:8000`
+- Production later: your HTTPS API domain
+
+For a physical phone, keep the phone and Mac on the same Wi-Fi, start Docker on the Mac, and use `ipconfig getifaddr en0` to find the LAN IP.
+
+### Camera, Photos, And Barcode Permissions
+
+The app uses camera/gallery for meal photos and camera access for barcode scan. If the app cannot open camera/gallery:
+
+- iOS: Simulator or device Settings -> Privacy & Security -> Camera/Photos -> allow NutriNova AI.
+- Android: Settings -> Apps -> NutriNova AI -> Permissions -> allow Camera and Photos.
+- If platform folders were regenerated, confirm `image_picker` and `mobile_scanner` permissions are present in the generated iOS/Android project files.
+
+### Common macOS Phone Testing Issues
+
+- Phone cannot reach backend: use your Mac LAN IP instead of `localhost`.
+- Backend rejects the phone request: add the LAN IP to `DJANGO_ALLOWED_HOSTS` and restart the backend.
+- Photo preview image does not load: run `make ensure-local-storage` from the repo root and confirm port `9000` is reachable.
+- Camera opens black: check simulator/device camera permissions and try a physical device for barcode scanning.
+- Android emulator cannot connect: use `10.0.2.2`, not `127.0.0.1`.
 
 ## Connected Core Flows
 
-With `MOCK_MODE=false`, the mobile app uses backend endpoints for:
+In real backend mode, the mobile app uses backend endpoints for:
 
 - Auth and onboarding profile state
 - Food search and food detail
@@ -94,7 +136,8 @@ With `MOCK_MODE=false`, the mobile app uses backend endpoints for:
 ## 5. Quality Checks
 
 ```bash
-cd mobile
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+dart format .
 flutter analyze
 flutter test
 ```

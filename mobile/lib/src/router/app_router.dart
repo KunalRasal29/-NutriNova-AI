@@ -70,7 +70,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path: '/meals/quick-add', builder: (_, __) => const QuickAddScreen()),
       GoRoute(
         path: '/foods/custom',
-        builder: (_, __) => const CreateCustomFoodScreen(),
+        builder: (_, state) => CreateCustomFoodScreen(
+          initialBarcode: state.uri.queryParameters['barcode'] ?? '',
+        ),
       ),
       GoRoute(
           path: '/photos/scan', builder: (_, __) => const PhotoScanScreen()),

@@ -336,6 +336,35 @@ def test_quick_text_add_confirmation(api_client, user, egg_food):
 
 
 @pytest.mark.django_db
+def test_quick_text_add_reviewed_item_confirmation(api_client, user, egg_food):
+    api_client.force_authenticate(user=user)
+
+    response = api_client.post(
+        reverse("meal-quick-add-text-confirm"),
+        {
+            "text": "2 eggs",
+            "date": "2026-06-29",
+            "meal_type": "breakfast",
+            "items": [
+                {
+                    "raw_text": "2 eggs",
+                    "food_id": str(egg_food.id),
+                    "quantity_value": "2.000",
+                    "quantity_unit": "egg",
+                    "effective_total_grams": "100.000",
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    item = response.json()["items"][0]
+    assert item["food_name"] == "Egg, whole, boiled"
+    assert as_decimal(item["grams_calculated"]) == Decimal("100.000")
+
+
+@pytest.mark.django_db
 def test_quick_text_add_uncertain_input_requires_review(api_client, user, dal_food):
     api_client.force_authenticate(user=user)
 

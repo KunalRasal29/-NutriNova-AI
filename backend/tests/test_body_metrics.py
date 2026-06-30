@@ -109,7 +109,8 @@ def test_body_metric_user_isolation(api_client, user, other_user):
     )
 
     api_client.force_authenticate(user=other_user)
-    assert api_client.get(reverse("body-metric-detail", args=[metric.id])).status_code == 404
+    detail_response = api_client.get(reverse("body-metric-detail", args=[metric.id]))
+    assert detail_response.status_code == 404
     assert api_client.get(reverse("body-metric-list")).json()["results"] == []
 
 

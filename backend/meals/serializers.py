@@ -316,6 +316,18 @@ class QuickAddTextConfirmSerializer(serializers.Serializer):
     date = serializers.DateField(default=timezone.localdate)
     items = QuickAddConfirmItemSerializer(many=True, required=False)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if request:
+            self.fields["items"].child.fields["food_id"].queryset = (
+                visible_foods_for_user(request.user).prefetch_related(
+                    "servings",
+                    "nutrients__nutrient",
+                    "nutrients__source",
+                )
+            )
+
     def validate(self, attrs):
         if not attrs.get("text") and not attrs.get("items"):
             raise serializers.ValidationError(

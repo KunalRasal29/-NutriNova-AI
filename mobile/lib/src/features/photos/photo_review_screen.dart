@@ -128,7 +128,7 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
             NovaButton.primary(
               label: _saving ? 'Saving...' : 'Confirm as meal',
               icon: Icons.check,
-              onPressed: _saving || !review.items.any((item) => !item.isRemoved)
+              onPressed: _saving || !_canConfirm(review)
                   ? null
                   : () async {
                       setState(() => _saving = true);
@@ -162,6 +162,14 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
         ),
         loading: () => const LoadingList(),
       ),
+    );
+  }
+
+  bool _canConfirm(PhotoReview review) {
+    final activeItems = review.items.where((item) => !item.isRemoved);
+    if (activeItems.isEmpty) return false;
+    return activeItems.every(
+      (item) => item.matchedFoodId.isNotEmpty && item.grams > 0,
     );
   }
 }
@@ -227,14 +235,22 @@ class _WarningList extends StatelessWidget {
   }
 }
 
-class _PhotoFoodTile extends ConsumerWidget {
+class _PhotoFoodTile extends ConsumerStatefulWidget {
   const _PhotoFoodTile({required this.analysisId, required this.item});
 
   final String analysisId;
   final PhotoReviewItem item;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PhotoFoodTile> createState() => _PhotoFoodTileState();
+}
+
+class _PhotoFoodTileState extends ConsumerState<_PhotoFoodTile> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
     return NovaCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -277,46 +293,112 @@ class _PhotoFoodTile extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: NovaSpacing.md),
-          Row(
+          Wrap(
+            spacing: NovaSpacing.md,
+            runSpacing: NovaSpacing.sm,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              IconButton(
-                tooltip: 'Decrease',
-                icon: const Icon(Icons.remove_circle_outline),
-                onPressed: item.isRemoved
+              QuantityStepper(
+                value: item.quantity,
+                unit: item.unit,
+                isLoading: _busy,
+                onDecrement: item.isRemoved
                     ? null
-                    : () => _mutate(
-                          context,
-                          ref,
-                          () async {
+                    : () => _mutate(() async {
+                          await ref
+                              .read(nutritionRepositoryProvider)
+                              .decrementPhotoFood(item.id);
+                        }),
+                onIncrement: item.isRemoved
+                    ? null
+                    : () => _mutate(() async {
+                          await ref
+                              .read(nutritionRepositoryProvider)
+                              .incrementPhotoFood(item.id);
+                        }),
+              ),
+              SizedBox(
+                width: 130,
+                child: DropdownButtonFormField<String>(
+                  initialValue:
+                      _unitOptions.contains(item.unit) ? item.unit : 'serving',
+                  decoration: const InputDecoration(labelText: 'Unit'),
+                  items: [
+                    for (final unit in _unitOptions)
+                      DropdownMenuItem(value: unit, child: Text(_label(unit))),
+                  ],
+                  onChanged: item.isRemoved || _busy
+                      ? null
+                      : (unit) {
+                          if (unit == null) return;
+                          _mutate(() async {
                             await ref
                                 .read(nutritionRepositoryProvider)
-                                .decrementPhotoFood(item.id);
-                          },
-                        ),
+                                .updatePhotoFood(
+                                  detectedFoodId: item.id,
+                                  unit: unit,
+                                );
+                          });
+                        },
+                ),
               ),
-              Text(
-                '${item.quantity.toStringAsFixed(0)} ${item.unit}',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+              ActionChip(
+                avatar: const Icon(Icons.scale_outlined, size: 16),
+                label: Text('${item.grams.toStringAsFixed(0)}g'),
+                onPressed:
+                    item.isRemoved || _busy ? null : () => _editGrams(item),
               ),
-              IconButton(
-                tooltip: 'Increase',
-                icon: const Icon(Icons.add_circle_outline),
-                onPressed: item.isRemoved
+            ],
+          ),
+          const SizedBox(height: NovaSpacing.sm),
+          Wrap(
+            spacing: NovaSpacing.sm,
+            children: [
+              const Text('Eaten'),
+              ActionChip(
+                label: const Text('All'),
+                onPressed: item.isRemoved || _busy
                     ? null
-                    : () => _mutate(
-                          context,
-                          ref,
-                          () async {
-                            await ref
-                                .read(nutritionRepositoryProvider)
-                                .incrementPhotoFood(item.id);
-                          },
-                        ),
+                    : () => _mutate(() async {
+                          await ref
+                              .read(nutritionRepositoryProvider)
+                              .updatePhotoFood(
+                                detectedFoodId: item.id,
+                                totalGrams: item.grams,
+                              );
+                        }),
               ),
-              const Spacer(),
-              Text('${item.grams.toStringAsFixed(0)}g'),
+              ActionChip(
+                label: const Text('75%'),
+                onPressed: item.isRemoved || _busy
+                    ? null
+                    : () => _mutate(() async {
+                          await ref
+                              .read(nutritionRepositoryProvider)
+                              .updatePhotoFood(
+                                detectedFoodId: item.id,
+                                totalGrams: item.grams * 0.75,
+                              );
+                        }),
+              ),
+              ActionChip(
+                label: const Text('Half'),
+                onPressed: item.isRemoved || _busy
+                    ? null
+                    : () => _mutate(() async {
+                          await ref
+                              .read(nutritionRepositoryProvider)
+                              .updatePhotoFood(
+                                detectedFoodId: item.id,
+                                totalGrams: item.grams * 0.5,
+                              );
+                        }),
+              ),
+              ActionChip(
+                label: const Text('Custom'),
+                onPressed:
+                    item.isRemoved || _busy ? null : () => _editGrams(item),
+              ),
             ],
           ),
           if (item.alternatives.isNotEmpty) ...[
@@ -339,18 +421,14 @@ class _PhotoFoodTile extends ConsumerWidget {
                   ? null
                   : (foodId) {
                       if (foodId == null) return;
-                      _mutate(
-                        context,
-                        ref,
-                        () async {
-                          await ref
-                              .read(nutritionRepositoryProvider)
-                              .updatePhotoFood(
-                                detectedFoodId: item.id,
-                                matchedFoodId: foodId,
-                              );
-                        },
-                      );
+                      _mutate(() async {
+                        await ref
+                            .read(nutritionRepositoryProvider)
+                            .updatePhotoFood(
+                              detectedFoodId: item.id,
+                              matchedFoodId: foodId,
+                            );
+                      });
                     },
             ),
           ],
@@ -370,21 +448,27 @@ class _PhotoFoodTile extends ConsumerWidget {
             ),
           ],
           const Divider(),
-          _MacroLine(preview: item.preview),
+          NutritionPreviewBar(
+            caloriesKcal: item.preview.caloriesKcal,
+            proteinG: item.preview.proteinG,
+            carbsG: item.preview.carbsG,
+            fatG: item.preview.fatG,
+            compact: true,
+          ),
           const SizedBox(height: NovaSpacing.sm),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: () => _mutate(
-                context,
-                ref,
-                () async {
-                  await ref.read(nutritionRepositoryProvider).updatePhotoFood(
-                        detectedFoodId: item.id,
-                        isRemoved: !item.isRemoved,
-                      );
-                },
-              ),
+              onPressed: _busy
+                  ? null
+                  : () => _mutate(() async {
+                        await ref
+                            .read(nutritionRepositoryProvider)
+                            .updatePhotoFood(
+                              detectedFoodId: item.id,
+                              isRemoved: !item.isRemoved,
+                            );
+                      }),
               icon: Icon(
                 item.isRemoved ? Icons.restore : Icons.delete_outline,
               ),
@@ -396,20 +480,83 @@ class _PhotoFoodTile extends ConsumerWidget {
     );
   }
 
-  Future<void> _mutate(
-    BuildContext context,
-    WidgetRef ref,
-    Future<void> Function() update,
-  ) async {
+  static const _unitOptions = [
+    'serving',
+    'gram',
+    'egg',
+    'piece',
+    'slice',
+    'bowl',
+    'cup',
+    'scoop',
+  ];
+
+  String _label(String unit) {
+    return unit[0].toUpperCase() + unit.substring(1).replaceAll('_', ' ');
+  }
+
+  Future<void> _editGrams(PhotoReviewItem item) async {
+    final controller = TextEditingController(
+      text: item.grams <= 0 ? '' : item.grams.toStringAsFixed(0),
+    );
+    final grams = await showModalBottomSheet<double>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SectionHeader(title: 'Edit grams for ${item.name}'),
+              const SizedBox(height: NovaSpacing.md),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Total grams eaten',
+                  prefixIcon: Icon(Icons.scale_outlined),
+                ),
+              ),
+              const SizedBox(height: NovaSpacing.lg),
+              NovaButton.primary(
+                label: 'Apply grams',
+                icon: Icons.check,
+                onPressed: () {
+                  Navigator.of(context).pop(double.tryParse(controller.text));
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    if (grams == null || grams <= 0) return;
+    await _mutate(() async {
+      await ref.read(nutritionRepositoryProvider).updatePhotoFood(
+            detectedFoodId: item.id,
+            totalGrams: grams,
+          );
+    });
+  }
+
+  Future<void> _mutate(Future<void> Function() update) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
     try {
       await update();
-      ref.invalidate(photoReviewProvider(analysisId));
+      ref.invalidate(photoReviewProvider(widget.analysisId));
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text(error.toString())),
         );
       }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }
