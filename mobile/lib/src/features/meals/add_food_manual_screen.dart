@@ -9,7 +9,9 @@ import '../../core/widgets/nova_widgets.dart';
 import '../dashboard/dashboard_controller.dart';
 
 class AddFoodManualScreen extends ConsumerStatefulWidget {
-  const AddFoodManualScreen({super.key});
+  const AddFoodManualScreen({super.key, this.initialMealType = 'breakfast'});
+
+  final String initialMealType;
 
   @override
   ConsumerState<AddFoodManualScreen> createState() =>
@@ -21,9 +23,15 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
   final _quantity = TextEditingController(text: '100');
   final _grams = TextEditingController();
   String _unit = 'gram';
-  String _mealType = 'breakfast';
+  late String _mealType;
   FoodSummary? _selectedFood;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _mealType = widget.initialMealType;
+  }
 
   @override
   void dispose() {
@@ -48,7 +56,8 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
         IconButton(
           tooltip: 'Create custom food',
           icon: const Icon(Icons.add_circle_outline),
-          onPressed: () => context.go('/foods/custom'),
+          onPressed: () =>
+              context.go(_withMealType('/foods/custom', _mealType)),
         ),
       ],
       body: ListView(
@@ -142,7 +151,9 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => context.go('/foods/${_selectedFood!.id}'),
+                    onPressed: () => context.go(
+                      _withMealType('/foods/${_selectedFood!.id}', _mealType),
+                    ),
                     child: const Text('Details'),
                   ),
                 ],
@@ -266,6 +277,10 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
     }
     return quantity * perUnit;
   }
+}
+
+String _withMealType(String path, String mealType) {
+  return Uri(path: path, queryParameters: {'meal_type': mealType}).toString();
 }
 
 class _NutritionPreview extends StatelessWidget {

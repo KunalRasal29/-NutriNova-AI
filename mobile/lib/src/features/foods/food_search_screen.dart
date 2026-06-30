@@ -8,7 +8,9 @@ import '../../core/widgets/nova_widgets.dart';
 import '../dashboard/dashboard_controller.dart';
 
 class FoodSearchScreen extends ConsumerStatefulWidget {
-  const FoodSearchScreen({super.key});
+  const FoodSearchScreen({super.key, this.initialMealType = 'lunch'});
+
+  final String initialMealType;
 
   @override
   ConsumerState<FoodSearchScreen> createState() => _FoodSearchScreenState();
@@ -16,7 +18,7 @@ class FoodSearchScreen extends ConsumerStatefulWidget {
 
 class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
   final _query = TextEditingController();
-  String _mealType = 'lunch';
+  late String _mealType;
 
   static const _suggestions = [
     'chicken breast',
@@ -32,6 +34,12 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _mealType = widget.initialMealType;
+  }
+
+  @override
   void dispose() {
     _query.dispose();
     super.dispose();
@@ -40,13 +48,17 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final foods = ref.watch(foodSearchProvider(_query.text));
+    final recentFoods = _recentFoodNames(
+      ref.watch(todayMealLogsProvider).valueOrNull ?? const [],
+    );
     return NovaScaffold(
       title: 'Add Food',
       actions: [
         IconButton(
           tooltip: 'Create custom food',
           icon: const Icon(Icons.add_circle_outline),
-          onPressed: () => context.go('/foods/custom'),
+          onPressed: () =>
+              context.go(_withMealType('/foods/custom', _mealType)),
         ),
       ],
       body: Column(
@@ -66,7 +78,6 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
                   decoration: const InputDecoration(
                     hintText: 'Search foods, brands, meals...',
                     prefixIcon: Icon(Icons.search),
-                    suffixIcon: Icon(Icons.close),
                   ),
                   textInputAction: TextInputAction.search,
                   onChanged: (_) => setState(() {}),
@@ -74,13 +85,14 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
                 const SizedBox(height: NovaSpacing.md),
                 const _FoodSearchTabs(),
                 const SizedBox(height: NovaSpacing.md),
-                const _SearchShortcuts(),
+                _SearchShortcuts(mealType: _mealType),
               ],
             ),
           ),
           Expanded(
             child: _query.text.trim().isEmpty
                 ? _SuggestionList(
+                    recentFoods: recentFoods,
                     suggestions: _suggestions,
                     onPick: (value) => setState(() => _query.text = value),
                   )
@@ -88,7 +100,9 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
                     data: (items) => _FoodResults(
                       items: items,
                       query: _query.text,
-                      onCreateCustom: () => context.go('/foods/custom'),
+                      mealType: _mealType,
+                      onCreateCustom: () =>
+                          context.go(_withMealType('/foods/custom', _mealType)),
                     ),
                     error: (error, _) => ErrorPanel(
                       message: error.toString(),
@@ -156,7 +170,9 @@ class _TabLabel extends StatelessWidget {
 }
 
 class _SearchShortcuts extends StatelessWidget {
-  const _SearchShortcuts();
+  const _SearchShortcuts({required this.mealType});
+
+  final String mealType;
 
   @override
   Widget build(BuildContext context) {
@@ -177,7 +193,7 @@ class _SearchShortcuts extends StatelessWidget {
         for (final shortcut in shortcuts)
           InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: () => context.go(shortcut.$3),
+            onTap: () => context.go(_withMealType(shortcut.$3, mealType)),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: NovaColors.panel,
@@ -210,10 +226,12 @@ class _SearchShortcuts extends StatelessWidget {
 
 class _SuggestionList extends StatelessWidget {
   const _SuggestionList({
+    required this.recentFoods,
     required this.suggestions,
     required this.onPick,
   });
 
+  final List<String> recentFoods;
   final List<String> suggestions;
   final ValueChanged<String> onPick;
 
@@ -222,22 +240,29 @@ class _SuggestionList extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
       children: [
+        if (recentFoods.isNotEmpty) ...[
+          const Text(
+            'Recently Logged',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          for (final food in recentFoods)
+            _SuggestionTile(
+              label: food,
+              icon: Icons.history,
+              onTap: () => onPick(food),
+            ),
+          const SizedBox(height: NovaSpacing.xl),
+        ],
         const Text(
           'Suggested Searches',
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: NovaSpacing.md),
         for (final suggestion in suggestions)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              backgroundColor: NovaColors.panel,
-              child: const Icon(Icons.search, color: NovaColors.graphite),
-            ),
-            title: Text(
-              suggestion,
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
+          _SuggestionTile(
+            label: suggestion,
+            icon: Icons.search,
             onTap: () => onPick(suggestion),
           ),
         ListTile(
@@ -258,15 +283,45 @@ class _SuggestionList extends StatelessWidget {
   }
 }
 
+class _SuggestionTile extends StatelessWidget {
+  const _SuggestionTile({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        backgroundColor: NovaColors.panel,
+        child: Icon(icon, color: NovaColors.graphite),
+      ),
+      title: Text(
+        label,
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+      onTap: onTap,
+    );
+  }
+}
+
 class _FoodResults extends StatelessWidget {
   const _FoodResults({
     required this.items,
     required this.query,
+    required this.mealType,
     required this.onCreateCustom,
   });
 
   final List<FoodSummary> items;
   final String query;
+  final String mealType;
   final VoidCallback onCreateCustom;
 
   @override
@@ -305,7 +360,7 @@ class _FoodResults extends StatelessWidget {
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: NovaSpacing.md),
-        _FoodResultTile(food: best, highlighted: true),
+        _FoodResultTile(food: best, mealType: mealType, highlighted: true),
         if (rest.isNotEmpty) ...[
           const SizedBox(height: NovaSpacing.xl),
           const Text(
@@ -314,7 +369,7 @@ class _FoodResults extends StatelessWidget {
           ),
           const SizedBox(height: NovaSpacing.md),
           for (final food in rest) ...[
-            _FoodResultTile(food: food),
+            _FoodResultTile(food: food, mealType: mealType),
             const SizedBox(height: NovaSpacing.sm),
           ],
         ],
@@ -326,10 +381,12 @@ class _FoodResults extends StatelessWidget {
 class _FoodResultTile extends StatelessWidget {
   const _FoodResultTile({
     required this.food,
+    required this.mealType,
     this.highlighted = false,
   });
 
   final FoodSummary food;
+  final String mealType;
   final bool highlighted;
 
   @override
@@ -341,7 +398,9 @@ class _FoodResultTile extends StatelessWidget {
         children: [
           Expanded(
             child: InkWell(
-              onTap: () => context.go('/foods/${food.id}'),
+              onTap: () => context.go(
+                _withMealType('/foods/${food.id}', mealType),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -379,6 +438,31 @@ class _FoodResultTile extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  const SizedBox(height: NovaSpacing.sm),
+                  Wrap(
+                    spacing: NovaSpacing.xs,
+                    runSpacing: NovaSpacing.xs,
+                    children: [
+                      NovaBadge(
+                        label: 'P ${food.preview.proteinG.toStringAsFixed(0)}g',
+                        color: NovaColors.coral,
+                      ),
+                      NovaBadge(
+                        label: 'C ${food.preview.carbsG.toStringAsFixed(0)}g',
+                        color: NovaColors.gold,
+                      ),
+                      NovaBadge(
+                        label: 'F ${food.preview.fatG.toStringAsFixed(0)}g',
+                        color: NovaColors.violet,
+                      ),
+                      if (food.preview.fiberG > 0)
+                        NovaBadge(
+                          label:
+                              'Fiber ${food.preview.fiberG.toStringAsFixed(0)}g',
+                          color: NovaColors.lime,
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -387,10 +471,32 @@ class _FoodResultTile extends StatelessWidget {
           IconButton.filled(
             tooltip: 'Add food',
             icon: const Icon(Icons.add),
-            onPressed: () => context.go('/foods/${food.id}'),
+            onPressed: () => context.go(
+              _withMealType('/foods/${food.id}', mealType),
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+String _withMealType(String path, String mealType) {
+  return Uri(path: path, queryParameters: {'meal_type': mealType}).toString();
+}
+
+List<String> _recentFoodNames(List<MealLogSummary> logs) {
+  final names = <String>[];
+  final seen = <String>{};
+  for (final log in logs.reversed) {
+    for (final item in log.items.reversed) {
+      final name = item.foodName.trim();
+      final key = name.toLowerCase();
+      if (name.isEmpty || seen.contains(key)) continue;
+      seen.add(key);
+      names.add(name);
+      if (names.length == 5) return names;
+    }
+  }
+  return names;
 }

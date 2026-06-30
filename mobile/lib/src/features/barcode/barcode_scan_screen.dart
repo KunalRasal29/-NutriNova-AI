@@ -10,7 +10,9 @@ import '../../core/widgets/nova_widgets.dart';
 import '../dashboard/dashboard_controller.dart';
 
 class BarcodeScanScreen extends ConsumerStatefulWidget {
-  const BarcodeScanScreen({super.key});
+  const BarcodeScanScreen({super.key, this.initialMealType = 'snack'});
+
+  final String initialMealType;
 
   @override
   ConsumerState<BarcodeScanScreen> createState() => _BarcodeScanScreenState();
@@ -22,9 +24,15 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   String? _barcode;
   List<FoodSummary> _results = [];
   bool _loading = false;
-  String _mealType = 'snack';
+  late String _mealType;
   String? _savingFoodId;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _mealType = widget.initialMealType;
+  }
 
   @override
   void dispose() {
@@ -139,7 +147,13 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                     label: 'Create custom food',
                     icon: Icons.add,
                     onPressed: () => context.go(
-                      '/foods/custom?barcode=${Uri.encodeComponent(_barcode ?? '')}',
+                      Uri(
+                        path: '/foods/custom',
+                        queryParameters: {
+                          'barcode': _barcode ?? '',
+                          'meal_type': _mealType,
+                        },
+                      ).toString(),
                     ),
                   ),
                 ],
@@ -175,7 +189,9 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                 food: food,
                 grams: grams,
                 saving: _savingFoodId == food.id,
-                onOpen: () => context.go('/foods/${food.id}'),
+                onOpen: () => context.go(
+                  _withMealType('/foods/${food.id}', _mealType),
+                ),
                 onLog: grams <= 0
                     ? null
                     : () => _logFood(food: food, grams: grams),
@@ -241,6 +257,10 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
       messenger.showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
+}
+
+String _withMealType(String path, String mealType) {
+  return Uri(path: path, queryParameters: {'meal_type': mealType}).toString();
 }
 
 class _BarcodeFoodCard extends StatelessWidget {

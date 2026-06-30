@@ -616,22 +616,22 @@ class _ActionGrid extends StatelessWidget {
               NovaButton.primary(
                 label: 'Log food',
                 icon: Icons.add_circle_outline,
-                onPressed: () => context.go('/meals/manual'),
+                onPressed: () => context.go(_withMealType('/meals/manual')),
               ),
               NovaButton.secondary(
                 label: 'Meal scan',
                 icon: Icons.camera_alt_outlined,
-                onPressed: () => context.go('/photos/scan'),
+                onPressed: () => context.go(_withMealType('/photos/scan')),
               ),
               NovaButton.secondary(
                 label: 'Quick add',
                 icon: Icons.flash_on_outlined,
-                onPressed: () => context.go('/meals/quick-add'),
+                onPressed: () => context.go(_withMealType('/meals/quick-add')),
               ),
               NovaButton.secondary(
                 label: 'Barcode',
                 icon: Icons.qr_code_scanner,
-                onPressed: () => context.go('/barcode'),
+                onPressed: () => context.go(_withMealType('/barcode')),
               ),
             ],
           ),
@@ -639,6 +639,10 @@ class _ActionGrid extends StatelessWidget {
       ),
     );
   }
+}
+
+String _withMealType(String path, {String mealType = 'lunch'}) {
+  return Uri(path: path, queryParameters: {'meal_type': mealType}).toString();
 }
 
 class _WaterCard extends StatelessWidget {
@@ -707,7 +711,7 @@ class _MealsPreview extends StatelessWidget {
                 NovaButton.primary(
                   label: 'Log first food',
                   icon: Icons.add,
-                  onPressed: () => context.go('/meals/manual'),
+                  onPressed: () => context.go(_withMealType('/meals/manual')),
                 ),
               ],
             )

@@ -9,9 +9,14 @@ import '../../core/widgets/nova_widgets.dart';
 import '../dashboard/dashboard_controller.dart';
 
 class FoodDetailScreen extends ConsumerStatefulWidget {
-  const FoodDetailScreen({required this.foodId, super.key});
+  const FoodDetailScreen({
+    required this.foodId,
+    super.key,
+    this.initialMealType = 'breakfast',
+  });
 
   final String foodId;
+  final String initialMealType;
 
   @override
   ConsumerState<FoodDetailScreen> createState() => _FoodDetailScreenState();
@@ -21,7 +26,7 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
   final _quantity = TextEditingController(text: '100');
   final _grams = TextEditingController();
   String _unit = 'gram';
-  String _mealType = 'breakfast';
+  late String _mealType;
   String? _initializedFoodId;
   bool _saving = false;
 
@@ -40,6 +45,12 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
     'scoop',
     'packet',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _mealType = widget.initialMealType;
+  }
 
   @override
   void dispose() {

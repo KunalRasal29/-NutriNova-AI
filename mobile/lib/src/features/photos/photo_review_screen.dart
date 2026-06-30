@@ -14,17 +14,28 @@ final photoReviewProvider =
 });
 
 class PhotoReviewScreen extends ConsumerStatefulWidget {
-  const PhotoReviewScreen({required this.analysisId, super.key});
+  const PhotoReviewScreen({
+    required this.analysisId,
+    super.key,
+    this.initialMealType = 'lunch',
+  });
 
   final String analysisId;
+  final String initialMealType;
 
   @override
   ConsumerState<PhotoReviewScreen> createState() => _PhotoReviewScreenState();
 }
 
 class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
-  String _mealType = 'lunch';
+  late String _mealType;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _mealType = widget.initialMealType;
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -298,25 +298,25 @@ class _NovaAddSheet extends StatelessWidget {
                   icon: Icons.search,
                   label: 'Log food',
                   color: NovaColors.blue,
-                  onTap: () => _go(context, '/foods/search'),
+                  onTap: () => _go(context, _withMealType('/foods/search')),
                 ),
                 _AddSheetTile(
                   icon: Icons.flash_on_outlined,
                   label: 'Quick add',
                   color: NovaColors.gold,
-                  onTap: () => _go(context, '/meals/quick-add'),
+                  onTap: () => _go(context, _withMealType('/meals/quick-add')),
                 ),
                 _AddSheetTile(
                   icon: Icons.qr_code_scanner,
                   label: 'Barcode',
                   color: NovaColors.coral,
-                  onTap: () => _go(context, '/barcode'),
+                  onTap: () => _go(context, _withMealType('/barcode')),
                 ),
                 _AddSheetTile(
                   icon: Icons.camera_alt_outlined,
                   label: 'Meal scan',
                   color: NovaColors.mint,
-                  onTap: () => _go(context, '/photos/scan'),
+                  onTap: () => _go(context, _withMealType('/photos/scan')),
                 ),
                 _AddSheetTile(
                   icon: Icons.add_circle_outline,
@@ -342,6 +342,10 @@ class _NovaAddSheet extends StatelessWidget {
     Navigator.of(context).pop();
     context.go(path);
   }
+}
+
+String _withMealType(String path, {String mealType = 'lunch'}) {
+  return Uri(path: path, queryParameters: {'meal_type': mealType}).toString();
 }
 
 class _AddSheetTile extends StatelessWidget {

@@ -55,19 +55,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
       GoRoute(path: '/home', builder: (_, __) => const HomeDashboardScreen()),
       GoRoute(
-          path: '/foods/search', builder: (_, __) => const FoodSearchScreen()),
+        path: '/foods/search',
+        builder: (_, state) => FoodSearchScreen(
+          initialMealType: state.uri.queryParameters['meal_type'] ?? 'lunch',
+        ),
+      ),
       GoRoute(
         path: '/foods/:id',
         builder: (_, state) => FoodDetailScreen(
           foodId: state.pathParameters['id'] ?? '',
+          initialMealType:
+              state.uri.queryParameters['meal_type'] ?? 'breakfast',
         ),
       ),
       GoRoute(path: '/meals', builder: (_, __) => const MealLogScreen()),
       GoRoute(
-          path: '/meals/manual',
-          builder: (_, __) => const AddFoodManualScreen()),
+        path: '/meals/manual',
+        builder: (_, state) => AddFoodManualScreen(
+          initialMealType:
+              state.uri.queryParameters['meal_type'] ?? 'breakfast',
+        ),
+      ),
       GoRoute(
-          path: '/meals/quick-add', builder: (_, __) => const QuickAddScreen()),
+        path: '/meals/quick-add',
+        builder: (_, state) => QuickAddScreen(
+          initialMealType:
+              state.uri.queryParameters['meal_type'] ?? 'breakfast',
+        ),
+      ),
       GoRoute(
         path: '/foods/custom',
         builder: (_, state) => CreateCustomFoodScreen(
@@ -75,15 +90,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
-          path: '/photos/scan', builder: (_, __) => const PhotoScanScreen()),
+        path: '/photos/scan',
+        builder: (_, state) => PhotoScanScreen(
+          initialMealType: state.uri.queryParameters['meal_type'] ?? 'lunch',
+        ),
+      ),
       GoRoute(
         path: '/photos/review',
         builder: (_, state) => PhotoReviewScreen(
           analysisId:
               state.uri.queryParameters['analysis_id'] ?? 'mock-analysis',
+          initialMealType: state.uri.queryParameters['meal_type'] ?? 'lunch',
         ),
       ),
-      GoRoute(path: '/barcode', builder: (_, __) => const BarcodeScanScreen()),
+      GoRoute(
+        path: '/barcode',
+        builder: (_, state) => BarcodeScanScreen(
+          initialMealType: state.uri.queryParameters['meal_type'] ?? 'snack',
+        ),
+      ),
       GoRoute(
           path: '/recipes', builder: (_, __) => const RecipeBuilderScreen()),
       GoRoute(path: '/habits', builder: (_, __) => const HabitGridScreen()),

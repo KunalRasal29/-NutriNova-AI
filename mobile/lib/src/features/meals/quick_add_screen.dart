@@ -9,7 +9,9 @@ import '../../core/widgets/nova_widgets.dart';
 import '../dashboard/dashboard_controller.dart';
 
 class QuickAddScreen extends ConsumerStatefulWidget {
-  const QuickAddScreen({super.key});
+  const QuickAddScreen({super.key, this.initialMealType = 'breakfast'});
+
+  final String initialMealType;
 
   @override
   ConsumerState<QuickAddScreen> createState() => _QuickAddScreenState();
@@ -17,11 +19,17 @@ class QuickAddScreen extends ConsumerStatefulWidget {
 
 class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
   final _text = TextEditingController(text: '2 eggs');
-  String _mealType = 'breakfast';
+  late String _mealType;
   Map<String, dynamic>? _result;
   List<Map<String, dynamic>> _reviewItems = [];
   bool _loading = false;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _mealType = widget.initialMealType;
+  }
 
   @override
   void dispose() {

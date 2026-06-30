@@ -10,7 +10,9 @@ import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
 
 class PhotoScanScreen extends ConsumerStatefulWidget {
-  const PhotoScanScreen({super.key});
+  const PhotoScanScreen({super.key, this.initialMealType = 'lunch'});
+
+  final String initialMealType;
 
   @override
   ConsumerState<PhotoScanScreen> createState() => _PhotoScanScreenState();
@@ -93,7 +95,13 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
                           .uploadMealPhoto(_image!.path);
                       if (context.mounted) {
                         context.go(
-                          '/photos/review?analysis_id=${review.analysisId}',
+                          Uri(
+                            path: '/photos/review',
+                            queryParameters: {
+                              'analysis_id': review.analysisId,
+                              'meal_type': widget.initialMealType,
+                            },
+                          ).toString(),
                         );
                       }
                     } catch (error) {

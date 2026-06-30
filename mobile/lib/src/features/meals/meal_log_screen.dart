@@ -13,13 +13,14 @@ class MealLogScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final meals = ref.watch(todayMealLogsProvider);
+    final dashboard = ref.watch(dashboardProvider).valueOrNull;
     return NovaScaffold(
       title: 'Diary',
       actions: [
         IconButton(
           tooltip: 'Search food',
           icon: const Icon(Icons.search),
-          onPressed: () => context.go('/foods/search'),
+          onPressed: () => context.go(_withMealType('/foods/search', 'lunch')),
         ),
       ],
       body: meals.when(
@@ -36,9 +37,9 @@ class MealLogScreen extends ConsumerWidget {
               110,
             ),
             children: [
-              _CaloriesRemainingHeader(logs: logs),
+              _CaloriesRemainingHeader(logs: logs, snapshot: dashboard),
               const SizedBox(height: NovaSpacing.lg),
-              _FastActions(),
+              const _FastActions(mealType: 'lunch'),
               const SizedBox(height: NovaSpacing.lg),
               _MealSection(
                 title: 'Breakfast',
@@ -62,17 +63,21 @@ class MealLogScreen extends ConsumerWidget {
 }
 
 class _CaloriesRemainingHeader extends StatelessWidget {
-  const _CaloriesRemainingHeader({required this.logs});
+  const _CaloriesRemainingHeader({required this.logs, required this.snapshot});
 
   final List<MealLogSummary> logs;
+  final DashboardSnapshot? snapshot;
 
   @override
   Widget build(BuildContext context) {
-    final foodCalories = logs.fold<double>(
-      0,
-      (total, log) => total + log.totalCalories,
-    );
-    const goal = 2200.0;
+    final totals = _DiaryTotals.fromLogs(logs);
+    final foodCalories = snapshot?.consumedCalories ?? totals.calories;
+    final goal = snapshot?.targetCalories ?? 2000;
+    final protein = snapshot?.proteinG ?? totals.proteinG;
+    final carbs = snapshot?.carbsG ?? totals.carbsG;
+    final fat = snapshot?.fatG ?? totals.fatG;
+    final fiber = snapshot?.fiberG ?? totals.fiberG;
+    final sodium = snapshot?.sodiumMg ?? totals.sodiumMg;
     final remaining = goal - foodCalories;
     return NovaCard(
       child: Column(
@@ -93,9 +98,50 @@ class _CaloriesRemainingHeader extends StatelessWidget {
               const _MathPart(value: 0, label: 'Exercise'),
               const _MathSymbol('='),
               _MathPart(
-                value: remaining.clamp(0, 9999).toDouble(),
-                label: 'Remaining',
+                value: remaining.abs(),
+                label: remaining < 0 ? 'Over' : 'Remaining',
+                color: remaining < 0 ? NovaColors.coral : NovaColors.blue,
+              ),
+            ],
+          ),
+          const SizedBox(height: NovaSpacing.lg),
+          NutritionMetricGrid(
+            items: [
+              NutritionMetricItem(
+                label: 'Protein',
+                value: '${protein.toStringAsFixed(0)}g',
+                icon: Icons.fitness_center,
+                color: NovaColors.coral,
+              ),
+              NutritionMetricItem(
+                label: 'Carbs',
+                value: '${carbs.toStringAsFixed(0)}g',
+                icon: Icons.grain,
+                color: NovaColors.gold,
+              ),
+              NutritionMetricItem(
+                label: 'Fat',
+                value: '${fat.toStringAsFixed(0)}g',
+                icon: Icons.opacity,
+                color: NovaColors.violet,
+              ),
+              NutritionMetricItem(
+                label: 'Fiber',
+                value: '${fiber.toStringAsFixed(0)}g',
+                icon: Icons.grass_outlined,
+                color: NovaColors.lime,
+              ),
+              NutritionMetricItem(
+                label: 'Food',
+                value: '${foodCalories.toStringAsFixed(0)} kcal',
+                icon: Icons.restaurant,
                 color: NovaColors.blue,
+              ),
+              NutritionMetricItem(
+                label: 'Sodium',
+                value: '${sodium.toStringAsFixed(0)}mg',
+                icon: Icons.science_outlined,
+                color: NovaColors.mint,
               ),
             ],
           ),
@@ -103,6 +149,51 @@ class _CaloriesRemainingHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DiaryTotals {
+  const _DiaryTotals({
+    required this.calories,
+    required this.proteinG,
+    required this.carbsG,
+    required this.fatG,
+    required this.fiberG,
+    required this.sodiumMg,
+  });
+
+  factory _DiaryTotals.fromLogs(List<MealLogSummary> logs) {
+    var calories = 0.0;
+    var protein = 0.0;
+    var carbs = 0.0;
+    var fat = 0.0;
+    var fiber = 0.0;
+    var sodium = 0.0;
+    for (final log in logs) {
+      for (final item in log.items) {
+        calories += item.caloriesKcal;
+        protein += item.proteinG;
+        carbs += item.carbsG;
+        fat += item.fatG;
+        fiber += item.fiberG;
+        sodium += item.sodiumMg;
+      }
+    }
+    return _DiaryTotals(
+      calories: calories,
+      proteinG: protein,
+      carbsG: carbs,
+      fatG: fat,
+      fiberG: fiber,
+      sodiumMg: sodium,
+    );
+  }
+
+  final double calories;
+  final double proteinG;
+  final double carbsG;
+  final double fatG;
+  final double fiberG;
+  final double sodiumMg;
 }
 
 class _MathPart extends StatelessWidget {
@@ -170,6 +261,10 @@ class _MathSymbol extends StatelessWidget {
 }
 
 class _FastActions extends StatelessWidget {
+  const _FastActions({required this.mealType});
+
+  final String mealType;
+
   @override
   Widget build(BuildContext context) {
     return GridView.count(
@@ -183,22 +278,22 @@ class _FastActions extends StatelessWidget {
         _ActionTile(
           icon: Icons.qr_code_scanner,
           label: 'Barcode',
-          onTap: () => context.go('/barcode'),
+          onTap: () => context.go(_withMealType('/barcode', mealType)),
         ),
         _ActionTile(
           icon: Icons.mic_none_outlined,
           label: 'Voice log',
-          onTap: () => context.go('/meals/quick-add'),
+          onTap: () => context.go(_withMealType('/meals/quick-add', mealType)),
         ),
         _ActionTile(
           icon: Icons.camera_alt_outlined,
           label: 'Meal scan',
-          onTap: () => context.go('/photos/scan'),
+          onTap: () => context.go(_withMealType('/photos/scan', mealType)),
         ),
         _ActionTile(
           icon: Icons.flash_on_outlined,
           label: 'Quick add',
-          onTap: () => context.go('/meals/quick-add'),
+          onTap: () => context.go(_withMealType('/meals/quick-add', mealType)),
         ),
       ],
     );
@@ -270,6 +365,10 @@ class _MealSection extends StatelessWidget {
       0,
       (total, item) => total + item.caloriesKcal,
     );
+    final protein =
+        items.fold<double>(0, (total, item) => total + item.proteinG);
+    final carbs = items.fold<double>(0, (total, item) => total + item.carbsG);
+    final fat = items.fold<double>(0, (total, item) => total + item.fatG);
     return Padding(
       padding: const EdgeInsets.only(bottom: NovaSpacing.lg),
       child: NovaCard(
@@ -278,19 +377,48 @@ class _MealSection extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        calories.toStringAsFixed(0),
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                  if (items.isNotEmpty) ...[
+                    const SizedBox(height: NovaSpacing.xs),
+                    Row(
+                      children: [
+                        _MealMacroBadge(
+                          label: 'P',
+                          value: protein,
+                          color: NovaColors.coral,
                         ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    calories.toStringAsFixed(0),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
+                        const SizedBox(width: NovaSpacing.sm),
+                        _MealMacroBadge(
+                          label: 'C',
+                          value: carbs,
+                          color: NovaColors.gold,
+                        ),
+                        const SizedBox(width: NovaSpacing.sm),
+                        _MealMacroBadge(
+                          label: 'F',
+                          value: fat,
+                          color: NovaColors.violet,
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -304,7 +432,8 @@ class _MealSection extends StatelessWidget {
                   ),
                 ),
                 trailing: const Icon(Icons.add, color: NovaColors.blue),
-                onTap: () => context.go('/foods/search'),
+                onTap: () =>
+                    context.go(_withMealType('/foods/search', mealType)),
               )
             else ...[
               for (final item in items) _MealItemTile(item: item),
@@ -318,10 +447,44 @@ class _MealSection extends StatelessWidget {
                   ),
                 ),
                 trailing: const Icon(Icons.add, color: NovaColors.blue),
-                onTap: () => context.go('/foods/search'),
+                onTap: () =>
+                    context.go(_withMealType('/foods/search', mealType)),
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MealMacroBadge extends StatelessWidget {
+  const _MealMacroBadge({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final double value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        child: Text(
+          '$label ${value.toStringAsFixed(0)}g',
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
     );
@@ -335,12 +498,16 @@ class _MealItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final amount = item.grams > 0
+        ? '${item.grams.toStringAsFixed(0)}g'
+        : '${item.quantity.toStringAsFixed(item.quantity % 1 == 0 ? 0 : 1)} ${item.unit}';
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       title: Text(item.foodName),
       subtitle: Text(
-        '${item.quantity.toStringAsFixed(1)} ${item.unit} • '
-        '${item.grams.toStringAsFixed(0)}g',
+        '$amount • P ${item.proteinG.toStringAsFixed(0)}g  '
+        'C ${item.carbsG.toStringAsFixed(0)}g  '
+        'F ${item.fatG.toStringAsFixed(0)}g',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -350,4 +517,8 @@ class _MealItemTile extends StatelessWidget {
       ),
     );
   }
+}
+
+String _withMealType(String path, String mealType) {
+  return Uri(path: path, queryParameters: {'meal_type': mealType}).toString();
 }
