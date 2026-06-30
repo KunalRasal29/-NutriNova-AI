@@ -62,6 +62,10 @@ def sample_food(seeded_core):
         "protein_g": Decimal("18.3000"),
         "carbs_g": Decimal("1.2000"),
         "fat_g": Decimal("20.8000"),
+        "fiber_g": Decimal("0.0000"),
+        "sodium_mg": Decimal("22.0000"),
+        "calcium_mg": Decimal("208.0000"),
+        "saturated_fat_g": Decimal("13.1000"),
     }
     FoodNutrient.objects.bulk_create(
         [
@@ -168,6 +172,9 @@ def test_food_search_endpoint_returns_macro_summary(api_client, user, sample_foo
     assert result["verified"] is True
     assert result["nutrition_per_100g"]["calories"] == 265.0
     assert result["nutrition_per_100g"]["protein_g"] == 18.3
+    assert result["nutrition_per_100g"]["sodium_mg"] == 22.0
+    assert result["nutrition_per_100g"]["calcium_mg"] == 208.0
+    assert result["nutrition_per_100g"]["saturated_fat_g"] == 13.1
 
 
 @pytest.mark.django_db
@@ -210,6 +217,35 @@ def test_sample_importer_upserts_instead_of_creating_duplicates():
     latest_job = FoodDataImportJob.objects.filter(source=source).latest("created_at")
     assert latest_job.rows_created == 0
     assert latest_job.rows_updated == 20
+
+
+@pytest.mark.django_db
+def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
+    call_command("seed_popular_foods")
+
+    source = NutritionDataSource.objects.get(name="Manual Admin Sample")
+    assert Food.objects.filter(source=source).count() >= 110
+
+    chicken_curry = Food.objects.get(source=source, canonical_name="Chicken curry")
+    assert chicken_curry.servings.get(is_default=True).grams == Decimal("220.00")
+    assert chicken_curry.nutrients.filter(nutrient__code="sodium_mg").exists()
+
+    chapati = Food.objects.get(source=source, canonical_name="Chapati, whole wheat")
+    assert chapati.aliases.filter(alias="phulka").exists()
+    assert chapati.nutrients.filter(nutrient__code="iron_mg").exists()
+
+    assert Food.objects.filter(source=source, aliases__alias="besan chilla").exists()
+    assert Food.objects.filter(source=source, aliases__alias="protein shake").exists()
+
+    api_client.force_authenticate(user=user)
+    response = api_client.get(reverse("food-search"), {"q": "chapati"})
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "Chapati, whole wheat"
+
+    response = api_client.get(reverse("food-search"), {"q": "protein shake"})
+    assert response.status_code == 200
+    names = {result["name"] for result in response.json()["results"]}
+    assert "Protein shake with milk" in names
 
 
 @pytest.mark.django_db

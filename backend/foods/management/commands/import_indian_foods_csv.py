@@ -57,6 +57,11 @@ class Command(BaseCommand):
             "fiber_g": "fiber_g",
             "sugar_g": "sugar_g",
             "sodium_mg": "sodium_mg",
+            "potassium_mg": "potassium_mg",
+            "calcium_mg": "calcium_mg",
+            "iron_mg": "iron_mg",
+            "cholesterol_mg": "cholesterol_mg",
+            "saturated_fat_g": "saturated_fat_g",
         }
 
         try:

@@ -94,10 +94,13 @@ class FoodSummary {
     required this.dataClassification,
     required this.verified,
     required this.preview,
+    this.defaultServingDescription = '',
+    this.defaultServingGrams = 0,
   });
 
   factory FoodSummary.fromJson(Map<String, dynamic> json) {
     final nutrition = json['nutrition_per_100g'] as Map<String, dynamic>? ?? {};
+    final serving = json['default_serving'] as Map<String, dynamic>? ?? {};
     return FoodSummary(
       id: json['id']?.toString() ?? '',
       name:
@@ -110,6 +113,8 @@ class FoodSummary {
       dataClassification:
           json['data_classification']?.toString() ?? 'official_unverified',
       verified: json['verified'] == true,
+      defaultServingDescription: serving['description']?.toString() ?? '',
+      defaultServingGrams: _asDouble(serving['grams']),
       preview: MacroPreview(
         caloriesKcal: _asDouble(nutrition['calories']),
         proteinG: _asDouble(nutrition['protein_g']),
@@ -135,6 +140,21 @@ class FoodSummary {
   final String dataClassification;
   final bool verified;
   final MacroPreview preview;
+  final String defaultServingDescription;
+  final double defaultServingGrams;
+
+  String get servingSummary {
+    final serving = defaultServingDescription.trim();
+    final grams = defaultServingGrams;
+    if (serving.isNotEmpty && grams > 0) {
+      return '$serving (${grams.toStringAsFixed(grams % 1 == 0 ? 0 : 1)}g)';
+    }
+    if (serving.isNotEmpty) return serving;
+    if (grams > 0) {
+      return '${grams.toStringAsFixed(grams % 1 == 0 ? 0 : 1)}g serving';
+    }
+    return '100g reference';
+  }
 }
 
 class FoodServingOption {

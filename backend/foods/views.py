@@ -1,7 +1,7 @@
 import uuid
 
 from django.contrib.postgres.search import SearchQuery, SearchRank, TrigramSimilarity
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.db.models.functions import Greatest
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import generics, status
@@ -63,6 +63,15 @@ class FoodSearchView(generics.ListAPIView):
         if query:
             search_query = SearchQuery(query)
             queryset = queryset.annotate(
+                match_priority=Case(
+                    When(canonical_name__iexact=query, then=Value(5)),
+                    When(aliases__alias__iexact=query, then=Value(4)),
+                    When(canonical_name__istartswith=query, then=Value(3)),
+                    When(aliases__alias__istartswith=query, then=Value(2)),
+                    When(brand_name__iexact=query, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                ),
                 search_rank=SearchRank("search_vector", search_query),
                 similarity=Greatest(
                     TrigramSimilarity("canonical_name", query),
@@ -76,7 +85,13 @@ class FoodSearchView(generics.ListAPIView):
                 | Q(brand_name__icontains=query)
                 | Q(aliases__alias__icontains=query)
             )
-            queryset = queryset.order_by("-verified", "-search_rank", "-similarity")
+            queryset = queryset.order_by(
+                "-verified",
+                "-match_priority",
+                "-search_rank",
+                "-similarity",
+                "canonical_name",
+            )
         else:
             queryset = queryset.order_by("-verified", "canonical_name")
 

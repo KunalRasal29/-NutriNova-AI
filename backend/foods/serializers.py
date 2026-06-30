@@ -11,7 +11,20 @@ from foods.services.custom_foods import (
 )
 from nutrition.models import Nutrient
 
-SUMMARY_NUTRIENT_CODES = ("calories", "protein_g", "carbs_g", "fat_g")
+SUMMARY_NUTRIENT_CODES = (
+    "calories",
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "fiber_g",
+    "sugar_g",
+    "sodium_mg",
+    "calcium_mg",
+    "iron_mg",
+    "potassium_mg",
+    "cholesterol_mg",
+    "saturated_fat_g",
+)
 
 
 class FoodDefaultServingSummarySerializer(serializers.Serializer):
@@ -40,6 +53,46 @@ class FoodNutritionSummarySerializer(serializers.Serializer):
         allow_null=True,
     )
     fat_g = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        allow_null=True,
+    )
+    fiber_g = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        allow_null=True,
+    )
+    sugar_g = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        allow_null=True,
+    )
+    sodium_mg = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        allow_null=True,
+    )
+    calcium_mg = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        allow_null=True,
+    )
+    iron_mg = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        allow_null=True,
+    )
+    potassium_mg = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        allow_null=True,
+    )
+    cholesterol_mg = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        allow_null=True,
+    )
+    saturated_fat_g = serializers.DecimalField(
         max_digits=12,
         decimal_places=4,
         allow_null=True,

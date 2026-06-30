@@ -22,15 +22,22 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
 
   static const _suggestions = [
     'chicken breast',
+    'tandoori chicken',
+    'butter chicken',
     'boiled eggs',
+    'egg bhurji',
     'rice',
     'chapati',
+    'khichdi',
     'banana',
     'dal',
     'paneer',
+    'besan chilla',
+    'sprouts',
     'curd',
     'oats',
     'whey protein',
+    'protein shake',
   ];
 
   @override
@@ -391,6 +398,9 @@ class _FoodResultTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final servingText = food.servingSummary;
+    final sourceText =
+        food.brand.isEmpty ? servingText : '${food.brand} • $servingText';
     return NovaCard(
       color: highlighted ? NovaColors.panelRaised : NovaColors.panel,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -429,8 +439,8 @@ class _FoodResultTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${food.preview.caloriesKcal.toStringAsFixed(0)} cal, '
-                    '${food.brand.isEmpty ? '100 g' : food.brand}',
+                    '${food.preview.caloriesKcal.toStringAsFixed(0)} kcal / 100g'
+                    ' • $sourceText',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -460,6 +470,30 @@ class _FoodResultTile extends StatelessWidget {
                           label:
                               'Fiber ${food.preview.fiberG.toStringAsFixed(0)}g',
                           color: NovaColors.lime,
+                        ),
+                      if (food.preview.sugarG > 0)
+                        NovaBadge(
+                          label:
+                              'Sugar ${food.preview.sugarG.toStringAsFixed(0)}g',
+                          color: NovaColors.gold,
+                        ),
+                      if (food.preview.sodiumMg > 0)
+                        NovaBadge(
+                          label:
+                              'Na ${food.preview.sodiumMg.toStringAsFixed(0)}mg',
+                          color: NovaColors.blue,
+                        ),
+                      if (food.preview.calciumMg > 0)
+                        NovaBadge(
+                          label:
+                              'Ca ${food.preview.calciumMg.toStringAsFixed(0)}mg',
+                          color: NovaColors.mint,
+                        ),
+                      if (food.preview.ironMg > 0)
+                        NovaBadge(
+                          label:
+                              'Iron ${food.preview.ironMg.toStringAsFixed(1)}mg',
+                          color: NovaColors.coral,
                         ),
                     ],
                   ),
