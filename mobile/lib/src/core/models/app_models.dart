@@ -578,6 +578,147 @@ class BodyMetricTrend {
   final double? changeKg;
 }
 
+class NutritionDaySummary {
+  const NutritionDaySummary({
+    required this.date,
+    required this.preview,
+  });
+
+  factory NutritionDaySummary.fromJson(Map<String, dynamic> json) {
+    return NutritionDaySummary(
+      date: json['date']?.toString() ?? '',
+      preview: MacroPreview.fromJson(json),
+    );
+  }
+
+  final String date;
+  final MacroPreview preview;
+
+  bool get hasLoggedNutrition =>
+      preview.caloriesKcal > 0 ||
+      preview.proteinG > 0 ||
+      preview.carbsG > 0 ||
+      preview.fatG > 0;
+}
+
+class HabitCompletionDay {
+  const HabitCompletionDay({
+    required this.date,
+    required this.completed,
+    required this.total,
+  });
+
+  factory HabitCompletionDay.fromJson(Map<String, dynamic> json) {
+    final items = json['items'] as List<dynamic>? ?? const [];
+    final total = items.length;
+    final completed = items.where((item) {
+      if (item is! Map<String, dynamic>) return false;
+      return item['is_completed'] == true;
+    }).length;
+    return HabitCompletionDay(
+      date: json['date']?.toString() ?? '',
+      completed: completed,
+      total: total,
+    );
+  }
+
+  final String date;
+  final int completed;
+  final int total;
+
+  double get completionRate => total <= 0 ? 0 : completed / total;
+}
+
+class ProgressReport {
+  const ProgressReport({
+    required this.startDate,
+    required this.endDate,
+    required this.days,
+    required this.totals,
+    required this.averages,
+    required this.weightTrend,
+    required this.habitDays,
+    required this.insights,
+  });
+
+  factory ProgressReport.fromJson({
+    required Map<String, dynamic> rangeSummary,
+    required BodyMetricTrend weightTrend,
+    required Map<String, dynamic> habitMonthGrid,
+  }) {
+    final dayRows = rangeSummary['days'] as List<dynamic>? ?? const [];
+    final habitRows = habitMonthGrid['days'] as List<dynamic>? ?? const [];
+    final days = dayRows
+        .map((item) =>
+            NutritionDaySummary.fromJson(item as Map<String, dynamic>))
+        .toList();
+    final startDate = rangeSummary['start']?.toString() ??
+        (days.isNotEmpty ? days.first.date : '');
+    final endDate = rangeSummary['end']?.toString() ??
+        (days.isNotEmpty ? days.last.date : '');
+    final report = ProgressReport(
+      startDate: startDate,
+      endDate: endDate,
+      days: days,
+      totals: MacroPreview.fromJson(
+        rangeSummary['totals'] as Map<String, dynamic>? ?? const {},
+      ),
+      averages: MacroPreview.fromJson(
+        rangeSummary['averages'] as Map<String, dynamic>? ?? const {},
+      ),
+      weightTrend: weightTrend,
+      habitDays: habitRows
+          .map((item) =>
+              HabitCompletionDay.fromJson(item as Map<String, dynamic>))
+          .where((day) {
+        if (startDate.isEmpty || endDate.isEmpty) return true;
+        return day.date.compareTo(startDate) >= 0 &&
+            day.date.compareTo(endDate) <= 0;
+      }).toList(),
+      insights: const [],
+    );
+    return report.copyWith(insights: _progressInsights(report));
+  }
+
+  final String startDate;
+  final String endDate;
+  final List<NutritionDaySummary> days;
+  final MacroPreview totals;
+  final MacroPreview averages;
+  final BodyMetricTrend weightTrend;
+  final List<HabitCompletionDay> habitDays;
+  final List<String> insights;
+
+  int get loggedDays => days.where((day) => day.hasLoggedNutrition).length;
+  double get averageCalories => averages.caloriesKcal;
+  double get averageProtein => averages.proteinG;
+  double get highestCalories => days.fold<double>(
+        0,
+        (highest, day) => day.preview.caloriesKcal > highest
+            ? day.preview.caloriesKcal
+            : highest,
+      );
+  double get totalHabitCompletionRate {
+    final total = habitDays.fold<int>(0, (sum, day) => sum + day.total);
+    if (total <= 0) return 0;
+    final completed = habitDays.fold<int>(0, (sum, day) => sum + day.completed);
+    return completed / total;
+  }
+
+  ProgressReport copyWith({List<String>? insights}) {
+    return ProgressReport(
+      startDate: startDate,
+      endDate: endDate,
+      days: days,
+      totals: totals,
+      averages: averages,
+      weightTrend: weightTrend,
+      habitDays: habitDays,
+      insights: insights ?? this.insights,
+    );
+  }
+}
+
 class PhotoReview {
   const PhotoReview({
     required this.analysisId,
@@ -803,4 +944,47 @@ String _unitLabel(String unit, double quantity) {
     default:
       return normalized;
   }
+}
+
+List<String> _progressInsights(ProgressReport report) {
+  final insights = <String>[];
+  if (report.loggedDays == 0) {
+    return [
+      'Start logging meals to unlock calorie, protein, and macro trends.',
+      'A week of entries will make this report much more useful.',
+    ];
+  }
+  if (report.loggedDays < report.days.length) {
+    insights.add(
+      'You logged ${report.loggedDays} of ${report.days.length} days. More complete logs will make trends more reliable.',
+    );
+  } else {
+    insights.add('You logged every day in this report window.');
+  }
+  if (report.averageProtein >= 100) {
+    insights.add(
+      'Protein averaged ${report.averageProtein.toStringAsFixed(0)}g per day, which is strong for training consistency.',
+    );
+  } else if (report.averageProtein > 0) {
+    insights.add(
+      'Protein averaged ${report.averageProtein.toStringAsFixed(0)}g per day. Add a protein anchor to one more meal if your goal is muscle gain or retention.',
+    );
+  }
+  if (report.totalHabitCompletionRate >= 0.8) {
+    insights.add('Habit completion is strong this week.');
+  } else if (report.habitDays.any((day) => day.total > 0)) {
+    insights.add(
+      'Habit completion is ${(report.totalHabitCompletionRate * 100).toStringAsFixed(0)}%. Pick one habit to protect first.',
+    );
+  }
+  if (report.weightTrend.changeKg != null) {
+    final change = report.weightTrend.changeKg!;
+    if (change.abs() >= 0.1) {
+      final direction = change > 0 ? 'up' : 'down';
+      insights.add(
+        'Weight is $direction ${change.abs().toStringAsFixed(1)} kg across the tracked period.',
+      );
+    }
+  }
+  return insights.take(4).toList();
 }

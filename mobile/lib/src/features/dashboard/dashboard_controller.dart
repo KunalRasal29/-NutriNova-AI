@@ -7,6 +7,10 @@ final dashboardProvider = FutureProvider<DashboardSnapshot>((ref) async {
   return ref.watch(nutritionRepositoryProvider).dashboard();
 });
 
+final progressReportProvider = FutureProvider<ProgressReport>((ref) async {
+  return ref.watch(nutritionRepositoryProvider).progressReport();
+});
+
 final foodSearchProvider =
     FutureProvider.family<List<FoodSummary>, String>((ref, query) async {
   if (query.trim().isEmpty) return const [];

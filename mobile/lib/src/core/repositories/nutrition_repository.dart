@@ -3,6 +3,7 @@ import '../models/app_models.dart';
 
 abstract class NutritionRepository {
   Future<DashboardSnapshot> dashboard();
+  Future<ProgressReport> progressReport();
   Future<BodyMetricTrend> bodyMetricTrend();
   Future<void> logBodyMetric({
     required double weightKg,
@@ -129,6 +130,26 @@ class ApiNutritionRepository implements NutritionRepository {
         protein: _asDouble(data['protein_g']),
         mealCount: meals.length,
       ),
+    );
+  }
+
+  @override
+  Future<ProgressReport> progressReport() async {
+    final end = DateTime.now();
+    final start = end.subtract(const Duration(days: 6));
+    final rangeSummary = await _apiClient.get(
+      '/api/nutrition/range-summary/',
+      queryParameters: {
+        'start': _dateString(start),
+        'end': _dateString(end),
+      },
+    );
+    final bodyTrend = await bodyMetricTrend();
+    final habitGrid = await monthHabitGrid(_monthKey(end));
+    return ProgressReport.fromJson(
+      rangeSummary: rangeSummary.data as Map<String, dynamic>,
+      weightTrend: bodyTrend,
+      habitMonthGrid: habitGrid,
     );
   }
 
@@ -524,6 +545,12 @@ String _dateString(DateTime date) {
   return '${local.year}-$month-$day';
 }
 
+String _monthKey(DateTime date) {
+  final local = date.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  return '${local.year}-$month';
+}
+
 String _mealItemUnit(String unit) {
   if (unit == 'gram') return 'grams';
   if (unit == 'bowl' || unit == 'egg' || unit == 'slice' || unit == 'scoop') {
@@ -753,6 +780,126 @@ class MockNutritionRepository implements NutritionRepository {
       weightChangeKg: -1.4,
       insight:
           'Your protein is nearly on target. A light high-protein snack would close the day well.',
+    );
+  }
+
+  @override
+  Future<ProgressReport> progressReport() async {
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    return ProgressReport.fromJson(
+      rangeSummary: {
+        'start': '2026-06-24',
+        'end': '2026-06-30',
+        'days': const [
+          {
+            'date': '2026-06-24',
+            'calories_kcal': 1820,
+            'protein_g': 92,
+            'carbs_g': 210,
+            'fat_g': 54,
+            'fiber_g': 22,
+            'sugar_g': 36,
+            'sodium_mg': 1320,
+          },
+          {
+            'date': '2026-06-25',
+            'calories_kcal': 1985,
+            'protein_g': 108,
+            'carbs_g': 222,
+            'fat_g': 62,
+            'fiber_g': 25,
+            'sugar_g': 42,
+            'sodium_mg': 1480,
+          },
+          {
+            'date': '2026-06-26',
+            'calories_kcal': 1740,
+            'protein_g': 88,
+            'carbs_g': 188,
+            'fat_g': 58,
+            'fiber_g': 19,
+            'sugar_g': 31,
+            'sodium_mg': 1180,
+          },
+          {
+            'date': '2026-06-27',
+            'calories_kcal': 2120,
+            'protein_g': 116,
+            'carbs_g': 246,
+            'fat_g': 64,
+            'fiber_g': 28,
+            'sugar_g': 45,
+            'sodium_mg': 1650,
+          },
+          {
+            'date': '2026-06-28',
+            'calories_kcal': 1650,
+            'protein_g': 82,
+            'carbs_g': 180,
+            'fat_g': 50,
+            'fiber_g': 21,
+            'sugar_g': 28,
+            'sodium_mg': 1100,
+          },
+          {
+            'date': '2026-06-29',
+            'calories_kcal': 1900,
+            'protein_g': 104,
+            'carbs_g': 198,
+            'fat_g': 61,
+            'fiber_g': 26,
+            'sugar_g': 34,
+            'sodium_mg': 1260,
+          },
+          {
+            'date': '2026-06-30',
+            'calories_kcal': 1420,
+            'protein_g': 96,
+            'carbs_g': 168,
+            'fat_g': 48,
+            'fiber_g': 24,
+            'sugar_g': 34,
+            'sodium_mg': 1180,
+          },
+        ],
+        'totals': const {
+          'calories_kcal': 12635,
+          'protein_g': 686,
+          'carbs_g': 1412,
+          'fat_g': 397,
+          'fiber_g': 165,
+          'sugar_g': 250,
+          'sodium_mg': 9170,
+        },
+        'averages': const {
+          'calories_kcal': 1805,
+          'protein_g': 98,
+          'carbs_g': 202,
+          'fat_g': 56.7,
+          'fiber_g': 23.5,
+          'sugar_g': 35.7,
+          'sodium_mg': 1310,
+        },
+      },
+      weightTrend: const BodyMetricTrend(
+        weights: [74.2, 74.0, 73.9, 73.4, 73.2, 73.0, 72.8],
+        latestWeightKg: 72.8,
+        changeKg: -1.4,
+      ),
+      habitMonthGrid: {
+        'month': '2026-06',
+        'days': [
+          for (var day = 24; day <= 30; day += 1)
+            {
+              'date': '2026-06-${day.toString().padLeft(2, '0')}',
+              'items': [
+                {'title': 'Drink water', 'is_completed': day != 28},
+                {'title': 'Log meals', 'is_completed': day >= 25},
+                {'title': 'Walk 8,000 steps', 'is_completed': day.isEven},
+              ],
+            },
+        ],
+      },
     );
   }
 
