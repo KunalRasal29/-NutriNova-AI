@@ -46,9 +46,15 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
     final foods = ref.watch(foodSearchProvider(_query.text));
     final quantity = double.tryParse(_quantity.text) ?? 1;
     final totalGrams = double.tryParse(_grams.text);
+    final unitChoices = _unitChoicesFor(_selectedFood);
+    final selectedChoice = _choiceForUnit(unitChoices, _unit);
+    final effectiveGrams = _selectedFood == null
+        ? 0.0
+        : totalGrams ??
+            _estimatedGrams(_selectedFood!, quantity, selectedChoice);
     final preview = _selectedFood == null
         ? null
-        : _previewFor(_selectedFood!, quantity, totalGrams);
+        : _previewFor(_selectedFood!, effectiveGrams);
 
     return NovaScaffold(
       title: 'Manual add',
@@ -72,7 +78,7 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: NovaSpacing.md),
-          const SectionHeader(title: 'Meal'),
+          const SectionHeader(title: 'Meal for this food'),
           const SizedBox(height: NovaSpacing.sm),
           MealTypeSelector(
             value: _mealType,
@@ -121,11 +127,10 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                       ),
                       onTap: () => setState(() {
                         _selectedFood = food;
-                        if (_unit == 'egg' &&
-                            !food.name.toLowerCase().contains('egg')) {
-                          _unit = 'gram';
-                          _quantity.text = '100';
-                        }
+                        _unit =
+                            food.defaultServingGrams > 0 ? 'serving' : 'gram';
+                        _quantity.text = _unit == 'serving' ? '1' : '100';
+                        _grams.clear();
                       }),
                     );
                   },
@@ -167,7 +172,10 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                 child: TextField(
                   controller: _quantity,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Quantity'),
+                  decoration: const InputDecoration(
+                    labelText: 'Quantity',
+                    prefixIcon: Icon(Icons.numbers_outlined),
+                  ),
                   onChanged: (_) => setState(() {}),
                 ),
               ),
@@ -176,35 +184,50 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                 child: DropdownButtonFormField<String>(
                   initialValue: _unit,
                   decoration: const InputDecoration(labelText: 'Unit'),
-                  items: const [
-                    DropdownMenuItem(value: 'egg', child: Text('Egg')),
-                    DropdownMenuItem(value: 'serving', child: Text('Serving')),
-                    DropdownMenuItem(value: 'gram', child: Text('Gram')),
-                    DropdownMenuItem(value: 'piece', child: Text('Piece')),
-                    DropdownMenuItem(value: 'bowl', child: Text('Bowl')),
-                    DropdownMenuItem(value: 'cup', child: Text('Cup')),
-                    DropdownMenuItem(value: 'scoop', child: Text('Scoop')),
+                  items: [
+                    for (final choice in unitChoices)
+                      DropdownMenuItem(
+                        value: choice.unit,
+                        child: Text(choice.label),
+                      ),
                   ],
-                  onChanged: (value) => setState(() => _unit = value ?? _unit),
+                  onChanged: (value) => setState(() {
+                    _unit = value ?? _unit;
+                    _quantity.text = _unit == 'gram' ? '100' : '1';
+                    _grams.clear();
+                  }),
                 ),
               ),
             ],
           ),
+          if (_selectedFood != null) ...[
+            const SizedBox(height: NovaSpacing.sm),
+            _GramConversionLine(
+              text: _amountLabel(
+                quantity: quantity,
+                choice: selectedChoice,
+                grams: effectiveGrams,
+                override: totalGrams,
+              ),
+            ),
+          ],
           const SizedBox(height: NovaSpacing.md),
           TextField(
             controller: _grams,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(
-              labelText: 'Override grams',
+              labelText: 'Exact total grams',
+              helperText: 'Optional. Use this when you weighed the food.',
               prefixIcon: Icon(Icons.scale_outlined),
             ),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: NovaSpacing.lg),
-          if (preview != null) _NutritionPreview(preview: preview),
+          if (preview != null)
+            _NutritionPreview(preview: preview, grams: effectiveGrams),
           const SizedBox(height: NovaSpacing.lg),
           NovaButton.primary(
-            label: _saving ? 'Saving...' : 'Save meal item',
+            label: _saving ? 'Saving...' : 'Add to ${_mealLabel(_mealType)}',
             icon: Icons.check,
             onPressed: _selectedFood == null || _saving
                 ? null
@@ -216,7 +239,10 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                             quantity: quantity,
                             unit: _unit,
                             mealType: _mealType,
-                            totalGrams: totalGrams,
+                            totalGrams: _totalGramsForSave(
+                              override: totalGrams,
+                              effectiveGrams: effectiveGrams,
+                            ),
                           );
                       ref.invalidate(dashboardProvider);
                       ref.invalidate(todayMealLogsProvider);
@@ -239,8 +265,17 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
     );
   }
 
-  MacroPreview _previewFor(FoodSummary food, double quantity, double? grams) {
-    final effectiveGrams = grams ?? _estimatedGrams(food, quantity);
+  double? _totalGramsForSave({
+    required double? override,
+    required double effectiveGrams,
+  }) {
+    if (override != null && override > 0) return override;
+    if (_unit == 'gram') return null;
+    if (_unit == 'serving') return null;
+    return effectiveGrams;
+  }
+
+  MacroPreview _previewFor(FoodSummary food, double effectiveGrams) {
     final scale = effectiveGrams / 100;
     return MacroPreview(
       caloriesKcal: food.preview.caloriesKcal * scale,
@@ -258,24 +293,13 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
     );
   }
 
-  double _estimatedGrams(FoodSummary food, double quantity) {
+  double _estimatedGrams(
+    FoodSummary food,
+    double quantity,
+    _UnitChoice selectedChoice,
+  ) {
     if (_unit == 'gram') return quantity;
-    final name = food.name.toLowerCase();
-    var perUnit = 100.0;
-    if (_unit == 'egg') {
-      perUnit = 50;
-    } else if (_unit == 'piece' && name.contains('banana')) {
-      perUnit = 118;
-    } else if (_unit == 'piece' && name.contains('chapati')) {
-      perUnit = 45;
-    } else if (_unit == 'bowl') {
-      perUnit = 240;
-    } else if (_unit == 'cup') {
-      perUnit = 150;
-    } else if (_unit == 'scoop') {
-      perUnit = 30;
-    }
-    return quantity * perUnit;
+    return quantity * selectedChoice.grams;
   }
 }
 
@@ -283,10 +307,148 @@ String _withMealType(String path, String mealType) {
   return Uri(path: path, queryParameters: {'meal_type': mealType}).toString();
 }
 
+class _GramConversionLine extends StatelessWidget {
+  const _GramConversionLine({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.scale_outlined, color: NovaColors.graphite, size: 18),
+        const SizedBox(width: NovaSpacing.sm),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: NovaColors.graphite,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _UnitChoice {
+  const _UnitChoice({
+    required this.unit,
+    required this.label,
+    required this.grams,
+  });
+
+  final String unit;
+  final String label;
+  final double grams;
+}
+
+List<_UnitChoice> _unitChoicesFor(FoodSummary? food) {
+  if (food == null) {
+    return const [
+      _UnitChoice(unit: 'gram', label: 'Grams', grams: 1),
+      _UnitChoice(unit: 'serving', label: 'Serving', grams: 100),
+    ];
+  }
+  final name = food.name.toLowerCase();
+  final serving = food.servingSummary.toLowerCase();
+  final defaultGrams =
+      food.defaultServingGrams > 0 ? food.defaultServingGrams : 100.0;
+  final choices = <_UnitChoice>[
+    const _UnitChoice(unit: 'gram', label: 'Grams', grams: 1),
+    _UnitChoice(unit: 'serving', label: 'Serving', grams: defaultGrams),
+  ];
+
+  if (name.contains('egg') || serving.contains('egg')) {
+    choices.add(const _UnitChoice(unit: 'egg', label: 'Egg', grams: 50));
+  }
+  if (name.contains('banana') ||
+      name.contains('apple') ||
+      name.contains('orange') ||
+      name.contains('tomato') ||
+      serving.contains('piece')) {
+    choices
+        .add(_UnitChoice(unit: 'piece', label: 'Piece', grams: defaultGrams));
+  }
+  if (serving.contains('slice') ||
+      name.contains('bread') ||
+      name.contains('cheese')) {
+    choices
+        .add(_UnitChoice(unit: 'slice', label: 'Slice', grams: defaultGrams));
+  }
+  if (serving.contains('bowl') ||
+      serving.contains('katori') ||
+      name.contains('dal') ||
+      name.contains('curry')) {
+    choices.add(_UnitChoice(unit: 'bowl', label: 'Bowl', grams: defaultGrams));
+  }
+  if (serving.contains('cup') ||
+      name.contains('rice') ||
+      name.contains('oats') ||
+      name.contains('curd')) {
+    choices.add(const _UnitChoice(unit: 'cup', label: 'Cup', grams: 240));
+  }
+  if (name.contains('whey') ||
+      name.contains('protein powder') ||
+      serving.contains('scoop')) {
+    choices.add(
+      _UnitChoice(
+        unit: 'scoop',
+        label: 'Scoop',
+        grams: defaultGrams > 0 ? defaultGrams : 30,
+      ),
+    );
+  }
+
+  final seen = <String>{};
+  return [
+    for (final choice in choices)
+      if (seen.add(choice.unit)) choice,
+  ];
+}
+
+_UnitChoice _choiceForUnit(List<_UnitChoice> choices, String unit) {
+  return choices.firstWhere(
+    (choice) => choice.unit == unit,
+    orElse: () => choices.first,
+  );
+}
+
+String _amountLabel({
+  required double quantity,
+  required _UnitChoice choice,
+  required double grams,
+  required double? override,
+}) {
+  final quantityText = _formatAmount(quantity);
+  final gramsText = _formatAmount(grams);
+  if (override != null && override > 0) {
+    return '$quantityText ${choice.label.toLowerCase()} = ${gramsText}g exact';
+  }
+  if (choice.unit == 'gram') return '${gramsText}g total';
+  final perUnit = _formatAmount(choice.grams);
+  return '$quantityText ${choice.label.toLowerCase()} x ${perUnit}g = ${gramsText}g';
+}
+
+String _formatAmount(double value) {
+  return value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
+}
+
+String _mealLabel(String mealType) {
+  return mealType
+      .replaceAll('_', ' ')
+      .split(' ')
+      .map((part) =>
+          part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
+}
+
 class _NutritionPreview extends StatelessWidget {
-  const _NutritionPreview({required this.preview});
+  const _NutritionPreview({required this.preview, required this.grams});
 
   final MacroPreview preview;
+  final double grams;
 
   @override
   Widget build(BuildContext context) {
@@ -296,14 +458,25 @@ class _NutritionPreview extends StatelessWidget {
         children: [
           const SectionHeader(title: 'Nutrition preview'),
           const SizedBox(height: NovaSpacing.md),
+          Row(
+            children: [
+              const Icon(Icons.scale_outlined, color: NovaColors.graphite),
+              const SizedBox(width: NovaSpacing.sm),
+              Text(
+                '${_formatAmount(grams)}g selected',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const Spacer(),
+              Text(
+                '${preview.caloriesKcal.toStringAsFixed(0)} kcal',
+                style:
+                    const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: NovaSpacing.md),
           NutritionMetricGrid(
             items: [
-              NutritionMetricItem(
-                label: 'Calories',
-                value: '${preview.caloriesKcal.toStringAsFixed(0)} kcal',
-                icon: Icons.local_fire_department,
-                color: NovaColors.mint,
-              ),
               NutritionMetricItem(
                 label: 'Protein',
                 value: '${preview.proteinG.toStringAsFixed(1)}g',
@@ -334,6 +507,33 @@ class _NutritionPreview extends StatelessWidget {
                 icon: Icons.science_outlined,
                 color: NovaColors.blue,
               ),
+              NutritionMetricItem(
+                label: 'Sugar',
+                value: '${preview.sugarG.toStringAsFixed(1)}g',
+                icon: Icons.cookie_outlined,
+                color: NovaColors.gold,
+              ),
+              if (preview.calciumMg > 0)
+                NutritionMetricItem(
+                  label: 'Calcium',
+                  value: '${preview.calciumMg.toStringAsFixed(0)}mg',
+                  icon: Icons.health_and_safety_outlined,
+                  color: NovaColors.mint,
+                ),
+              if (preview.ironMg > 0)
+                NutritionMetricItem(
+                  label: 'Iron',
+                  value: '${preview.ironMg.toStringAsFixed(1)}mg',
+                  icon: Icons.bloodtype_outlined,
+                  color: NovaColors.coral,
+                ),
+              if (preview.potassiumMg > 0)
+                NutritionMetricItem(
+                  label: 'Potassium',
+                  value: '${preview.potassiumMg.toStringAsFixed(0)}mg',
+                  icon: Icons.bolt_outlined,
+                  color: NovaColors.lime,
+                ),
             ],
           ),
           if (preview.carbsG == 0 &&
