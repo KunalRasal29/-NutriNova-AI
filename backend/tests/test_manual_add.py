@@ -11,7 +11,7 @@ from PIL import Image
 from rest_framework.test import APIClient
 
 from foods.models import Food, FoodNutrient, FoodServing
-from meals.models import MealLogItem
+from meals.models import DailyNutritionSummary, MealLogItem
 from nutrition.models import Nutrient, NutritionDataSource
 from photos.models import PhotoAnalysis
 
@@ -176,6 +176,66 @@ def test_manual_food_add_to_meal(api_client, user, egg_food):
     assert as_decimal(payload["item"]["grams_calculated"]) == Decimal("100.000")
     assert as_decimal(payload["item"]["calories_kcal"]) == Decimal("155.000")
     assert MealLogItem.objects.get(user=user).food == egg_food
+
+
+@pytest.mark.django_db
+def test_meal_item_patch_recalculates_and_refreshes_summary(api_client, user, egg_food):
+    api_client.force_authenticate(user=user)
+    created = api_client.post(
+        reverse("meal-manual-add"),
+        {
+            "date": "2026-06-29",
+            "meal_type": "breakfast",
+            "food_id": str(egg_food.id),
+            "quantity_value": "2.000",
+            "quantity_unit": "egg",
+        },
+        format="json",
+    )
+    item_id = created.json()["item"]["id"]
+
+    response = api_client.patch(
+        reverse("meal-item-detail", args=[item_id]),
+        {
+            "food": str(egg_food.id),
+            "quantity": "3.000",
+            "unit": "serving",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    assert as_decimal(payload["quantity"]) == Decimal("3.000")
+    assert as_decimal(payload["grams_calculated"]) == Decimal("150.000")
+    assert as_decimal(payload["calories_kcal"]) == Decimal("232.500")
+
+    summary = DailyNutritionSummary.objects.get(user=user, date="2026-06-29")
+    assert summary.calories_kcal == Decimal("232.500")
+
+
+@pytest.mark.django_db
+def test_meal_item_delete_removes_item_and_refreshes_summary(api_client, user, egg_food):
+    api_client.force_authenticate(user=user)
+    created = api_client.post(
+        reverse("meal-manual-add"),
+        {
+            "date": "2026-06-29",
+            "meal_type": "breakfast",
+            "food_id": str(egg_food.id),
+            "quantity_value": "2.000",
+            "quantity_unit": "egg",
+        },
+        format="json",
+    )
+    item_id = created.json()["item"]["id"]
+
+    response = api_client.delete(reverse("meal-item-detail", args=[item_id]))
+
+    assert response.status_code == 204
+    assert not MealLogItem.objects.filter(id=item_id).exists()
+    summary = DailyNutritionSummary.objects.get(user=user, date="2026-06-29")
+    assert summary.calories_kcal == Decimal("0.000")
 
 
 @pytest.mark.django_db

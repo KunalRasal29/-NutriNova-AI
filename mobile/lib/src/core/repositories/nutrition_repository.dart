@@ -25,6 +25,14 @@ abstract class NutritionRepository {
     required String mealType,
     double? totalGrams,
   });
+  Future<void> updateMealItem({
+    required String itemId,
+    required String foodId,
+    required double quantity,
+    required String unit,
+    double? totalGrams,
+  });
+  Future<void> deleteMealItem(String itemId);
   Future<Map<String, dynamic>> quickAdd(String text, String mealType);
   Future<void> confirmQuickAdd(Map<String, dynamic> payload);
   Future<FoodDetail> createCustomFood(Map<String, dynamic> payload);
@@ -216,6 +224,30 @@ class ApiNutritionRepository implements NutritionRepository {
         if (totalGrams != null) 'total_grams': totalGrams,
       },
     );
+  }
+
+  @override
+  Future<void> updateMealItem({
+    required String itemId,
+    required String foodId,
+    required double quantity,
+    required String unit,
+    double? totalGrams,
+  }) async {
+    await _apiClient.patch(
+      '/api/meals/items/$itemId/',
+      data: {
+        'food': foodId,
+        'quantity': quantity,
+        'unit': _mealItemUnit(unit),
+        if (totalGrams != null) 'grams_calculated': totalGrams,
+      },
+    );
+  }
+
+  @override
+  Future<void> deleteMealItem(String itemId) async {
+    await _apiClient.delete('/api/meals/items/$itemId/');
   }
 
   @override
@@ -451,6 +483,14 @@ String _dateString(DateTime date) {
   return '${local.year}-$month-$day';
 }
 
+String _mealItemUnit(String unit) {
+  if (unit == 'gram') return 'grams';
+  if (unit == 'bowl' || unit == 'egg' || unit == 'slice' || unit == 'scoop') {
+    return 'serving';
+  }
+  return unit;
+}
+
 String _dashboardInsight({
   required double consumed,
   required double target,
@@ -616,6 +656,8 @@ class MockNutritionRepository implements NutritionRepository {
       waterTarget: 8,
       meals: const [
         MealItemSummary(
+          id: 'mock-breakfast-egg',
+          foodId: 'egg',
           foodName: 'Egg bhurji and toast',
           mealType: 'breakfast',
           caloriesKcal: 420,
@@ -627,6 +669,8 @@ class MockNutritionRepository implements NutritionRepository {
           sodiumMg: 410,
         ),
         MealItemSummary(
+          id: 'mock-lunch-dal',
+          foodId: 'dal',
           foodName: 'Dal rice bowl',
           mealType: 'lunch',
           caloriesKcal: 610,
@@ -810,6 +854,8 @@ class MockNutritionRepository implements NutritionRepository {
         name: 'Breakfast',
         items: [
           MealItemSummary(
+            id: 'mock-log-egg',
+            foodId: 'egg',
             foodName: 'Egg bhurji and toast',
             mealType: 'breakfast',
             caloriesKcal: 420,
@@ -849,6 +895,18 @@ class MockNutritionRepository implements NutritionRepository {
     required String mealType,
     double? totalGrams,
   }) async {}
+
+  @override
+  Future<void> updateMealItem({
+    required String itemId,
+    required String foodId,
+    required double quantity,
+    required String unit,
+    double? totalGrams,
+  }) async {}
+
+  @override
+  Future<void> deleteMealItem(String itemId) async {}
 
   @override
   Future<Map<String, dynamic>> quickAdd(String text, String mealType) async {

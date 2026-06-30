@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/models/app_models.dart';
+import '../../core/repositories/providers.dart';
 import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
 import '../dashboard/dashboard_controller.dart';
@@ -344,7 +345,7 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
-class _MealSection extends StatelessWidget {
+class _MealSection extends ConsumerWidget {
   const _MealSection({
     required this.title,
     required this.mealType,
@@ -356,7 +357,7 @@ class _MealSection extends StatelessWidget {
   final List<MealLogSummary> logs;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final items = [
       for (final log in logs)
         if (log.mealType == mealType) ...log.items,
@@ -436,7 +437,12 @@ class _MealSection extends StatelessWidget {
                     context.go(_withMealType('/foods/search', mealType)),
               )
             else ...[
-              for (final item in items) _MealItemTile(item: item),
+              for (final item in items)
+                _MealItemTile(
+                  item: item,
+                  onEdit: () => _openEditSheet(context, ref, item),
+                  onDelete: () => _confirmDelete(context, ref, item),
+                ),
               ListTile(
                 dense: true,
                 title: const Text(
@@ -455,6 +461,81 @@ class _MealSection extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openEditSheet(
+    BuildContext context,
+    WidgetRef ref,
+    MealItemSummary item,
+  ) async {
+    final result = await showModalBottomSheet<_MealItemEditResult>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: NovaColors.panel,
+      builder: (_) => _MealItemEditSheet(item: item),
+    );
+    if (result == null || !context.mounted) return;
+    try {
+      await ref.read(nutritionRepositoryProvider).updateMealItem(
+            itemId: item.id,
+            foodId: item.foodId,
+            quantity: result.quantity,
+            unit: result.unit,
+            totalGrams: result.totalGrams,
+          );
+      ref.invalidate(todayMealLogsProvider);
+      ref.invalidate(dashboardProvider);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${item.foodName} updated')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    MealItemSummary item,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete food?'),
+        content: Text('${item.foodName} will be removed from $title.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: NovaColors.danger),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await ref.read(nutritionRepositoryProvider).deleteMealItem(item.id);
+      ref.invalidate(todayMealLogsProvider);
+      ref.invalidate(dashboardProvider);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${item.foodName} deleted')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
   }
 }
 
@@ -492,9 +573,15 @@ class _MealMacroBadge extends StatelessWidget {
 }
 
 class _MealItemTile extends StatelessWidget {
-  const _MealItemTile({required this.item});
+  const _MealItemTile({
+    required this.item,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final MealItemSummary item;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -511,12 +598,220 @@ class _MealItemTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: Text(
-        item.caloriesKcal.toStringAsFixed(0),
-        style: const TextStyle(fontWeight: FontWeight.w900),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            item.caloriesKcal.toStringAsFixed(0),
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Food actions',
+            onSelected: (value) {
+              if (value == 'edit') onEdit();
+              if (value == 'delete') onDelete();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'edit',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.edit_outlined),
+                  title: Text('Edit'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.delete_outline, color: NovaColors.danger),
+                  title: Text('Delete'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
+}
+
+class _MealItemEditResult {
+  const _MealItemEditResult({
+    required this.quantity,
+    required this.unit,
+    required this.totalGrams,
+  });
+
+  final double quantity;
+  final String unit;
+  final double? totalGrams;
+}
+
+class _MealItemEditSheet extends StatefulWidget {
+  const _MealItemEditSheet({required this.item});
+
+  final MealItemSummary item;
+
+  @override
+  State<_MealItemEditSheet> createState() => _MealItemEditSheetState();
+}
+
+class _MealItemEditSheetState extends State<_MealItemEditSheet> {
+  late final TextEditingController _quantity;
+  late final TextEditingController _grams;
+  late String _unit;
+
+  static const _units = [
+    'grams',
+    'serving',
+    'piece',
+    'cup',
+    'tbsp',
+    'tsp',
+    'ml',
+    'custom',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _unit = _normalizedUnit(widget.item.unit);
+    final quantity = widget.item.quantity > 0 ? widget.item.quantity : 1.0;
+    _quantity = TextEditingController(text: _formatNumber(quantity));
+    _grams = TextEditingController(
+      text: widget.item.grams > 0 ? _formatNumber(widget.item.grams) : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _quantity.dispose();
+    _grams.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 8, 20, bottomInset + 20),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SectionHeader(title: widget.item.foodName),
+              const SizedBox(height: NovaSpacing.sm),
+              Text(
+                '${widget.item.caloriesKcal.toStringAsFixed(0)} kcal • '
+                'P ${widget.item.proteinG.toStringAsFixed(0)}g  '
+                'C ${widget.item.carbsG.toStringAsFixed(0)}g  '
+                'F ${widget.item.fatG.toStringAsFixed(0)}g',
+                style: const TextStyle(color: NovaColors.graphite),
+              ),
+              const SizedBox(height: NovaSpacing.lg),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _quantity,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(labelText: 'Quantity'),
+                    ),
+                  ),
+                  const SizedBox(width: NovaSpacing.md),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _unit,
+                      decoration: const InputDecoration(labelText: 'Unit'),
+                      items: [
+                        for (final unit in _units)
+                          DropdownMenuItem(
+                            value: unit,
+                            child: Text(_unitLabel(unit)),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _unit = value ?? _unit),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: NovaSpacing.md),
+              TextField(
+                controller: _grams,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Total grams',
+                  prefixIcon: Icon(Icons.scale_outlined),
+                  helperText: 'Choose grams for exact weight edits.',
+                ),
+              ),
+              const SizedBox(height: NovaSpacing.lg),
+              NovaButton.primary(
+                label: 'Save changes',
+                icon: Icons.check,
+                onPressed: () {
+                  final quantity = double.tryParse(_quantity.text.trim());
+                  final grams = double.tryParse(_grams.text.trim());
+                  if (quantity == null || quantity <= 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Enter a quantity greater than zero'),
+                      ),
+                    );
+                    return;
+                  }
+                  if (_unit == 'custom' && (grams == null || grams <= 0)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Custom unit needs total grams'),
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).pop(
+                    _MealItemEditResult(
+                      quantity: quantity,
+                      unit: _unit,
+                      totalGrams: grams != null && grams > 0 ? grams : null,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _normalizedUnit(String unit) {
+    if (unit == 'gram') return 'grams';
+    if (_units.contains(unit)) return unit;
+    return 'serving';
+  }
+
+  String _unitLabel(String unit) {
+    return switch (unit) {
+      'grams' => 'Grams',
+      'tbsp' => 'Tablespoon',
+      'tsp' => 'Teaspoon',
+      'ml' => 'Milliliter',
+      'custom' => 'Custom',
+      _ => '${unit[0].toUpperCase()}${unit.substring(1)}',
+    };
+  }
+}
+
+String _formatNumber(double value) {
+  return value.toStringAsFixed(value % 1 == 0 ? 0 : 2);
 }
 
 String _withMealType(String path, String mealType) {

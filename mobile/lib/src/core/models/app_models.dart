@@ -369,9 +369,11 @@ class MealLogSummary {
 
 class MealItemSummary {
   const MealItemSummary({
+    required this.id,
     required this.foodName,
     required this.mealType,
     required this.caloriesKcal,
+    required this.foodId,
     this.proteinG = 0,
     this.carbsG = 0,
     this.fatG = 0,
@@ -396,7 +398,9 @@ class MealItemSummary {
     final macros = json['macros_snapshot'] as Map<String, dynamic>? ?? {};
     final nutrients = json['nutrients_snapshot'] as Map<String, dynamic>? ?? {};
     return MealItemSummary(
+      id: json['id']?.toString() ?? '',
       foodName: json['food_name']?.toString() ?? 'Food',
+      foodId: json['food']?.toString() ?? '',
       brandName: json['brand_name']?.toString() ?? '',
       mealType: mealType,
       caloriesKcal: _asDouble(
@@ -423,7 +427,9 @@ class MealItemSummary {
     );
   }
 
+  final String id;
   final String foodName;
+  final String foodId;
   final String brandName;
   final String mealType;
   final double caloriesKcal;
