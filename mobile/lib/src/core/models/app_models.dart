@@ -616,12 +616,27 @@ class PhotoReview {
   final List<PhotoReviewItem> items;
   final MacroPreview totalPreview;
   final List<String> warnings;
+
+  bool get isProcessing => status == 'uploaded' || status == 'processing';
+  bool get isFailed => status == 'failed';
+  bool get isConfirmed => status == 'confirmed';
+  List<PhotoReviewItem> get activeItems =>
+      items.where((item) => !item.isRemoved).toList();
+  List<PhotoReviewItem> get removedItems =>
+      items.where((item) => item.isRemoved).toList();
+  bool get hasConfirmableItems =>
+      activeItems.isNotEmpty &&
+      activeItems.every(
+        (item) => item.matchedFoodId.isNotEmpty && item.grams > 0,
+      );
 }
 
 class PhotoReviewItem {
   const PhotoReviewItem({
     required this.id,
     required this.name,
+    required this.detectedName,
+    required this.matchedFoodName,
     required this.matchedFoodId,
     required this.quantity,
     required this.unit,
@@ -629,6 +644,10 @@ class PhotoReviewItem {
     required this.preview,
     required this.confidence,
     required this.isRemoved,
+    this.gramsPerUnit = 0,
+    this.minGrams = 0,
+    this.maxGrams = 0,
+    this.reasoning = '',
     this.sourceBadges = const [],
     this.warnings = const [],
     this.alternatives = const [],
@@ -646,6 +665,8 @@ class PhotoReviewItem {
         json['matched_food_name'],
         json['detected_name'],
       ]),
+      detectedName: json['detected_name']?.toString() ?? '',
+      matchedFoodName: json['matched_food_name']?.toString() ?? '',
       matchedFoodId: json['matched_food']?.toString() ?? '',
       quantity: _asDouble(
         json['effective_quantity_value'] ?? json['quantity_value'],
@@ -655,10 +676,14 @@ class PhotoReviewItem {
           json['quantity_unit']?.toString() ??
           'serving',
       grams: _asDouble(json['effective_total_grams']),
+      gramsPerUnit: _asDouble(json['grams_per_unit_estimate']),
+      minGrams: _asDouble(json['min_total_grams_estimate']),
+      maxGrams: _asDouble(json['max_total_grams_estimate']),
       preview: MacroPreview.fromJson(json),
       confidence: _asDouble(json['confidence_score']),
       isRemoved: json['is_removed'] == true,
-      sourceBadges: sourceBadges.map((source) => source.toString()).toList(),
+      reasoning: json['reasoning_short']?.toString() ?? '',
+      sourceBadges: sourceBadges.map(_sourceBadgeLabel).toList(),
       warnings: warnings.map((warning) => warning.toString()).toList(),
       alternatives: alternatives
           .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
@@ -669,17 +694,42 @@ class PhotoReviewItem {
 
   final String id;
   final String name;
+  final String detectedName;
+  final String matchedFoodName;
   final String matchedFoodId;
   final double quantity;
   final String unit;
   final double grams;
+  final double gramsPerUnit;
+  final double minGrams;
+  final double maxGrams;
   final MacroPreview preview;
   final double confidence;
   final bool isRemoved;
+  final String reasoning;
   final List<String> sourceBadges;
   final List<String> warnings;
   final List<FoodSummary> alternatives;
   final bool addedManually;
+
+  String get portionLabel =>
+      '${_formatNumber(quantity)} ${_unitLabel(unit, quantity)}';
+
+  String get gramsLabel =>
+      grams > 0 ? '${_formatNumber(grams)}g' : 'grams needed';
+
+  String get matchLabel {
+    if (matchedFoodName.isNotEmpty && detectedName.isNotEmpty) {
+      if (matchedFoodName.toLowerCase() != detectedName.toLowerCase()) {
+        return 'Detected as $detectedName';
+      }
+    }
+    return addedManually ? 'Added manually' : 'Detected from photo';
+  }
+
+  bool get needsAttention =>
+      !isRemoved &&
+      (matchedFoodId.isEmpty || grams <= 0 || warnings.isNotEmpty);
 }
 
 double _asDouble(Object? value, {double fallback = 0}) {
@@ -707,4 +757,50 @@ String _firstNonEmpty(List<Object?> values) {
     if (text.isNotEmpty) return text;
   }
   return '';
+}
+
+String _sourceBadgeLabel(Object? value) {
+  if (value is Map<String, dynamic>) {
+    final source = value['source_type']?.toString() ??
+        value['source_name']?.toString() ??
+        '';
+    final verified = value['food_verified'] == true ? ' verified' : '';
+    return source.isEmpty ? 'Source pending' : '$source$verified';
+  }
+  return value?.toString() ?? '';
+}
+
+String _formatNumber(double value) {
+  if (value % 1 == 0) return value.toStringAsFixed(0);
+  if (value >= 10) return value.toStringAsFixed(1);
+  return value.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '');
+}
+
+String _unitLabel(String unit, double quantity) {
+  final normalized = unit.replaceAll('_', ' ');
+  if (quantity == 1) return normalized;
+  switch (normalized) {
+    case 'serving':
+      return 'servings';
+    case 'egg':
+      return 'eggs';
+    case 'piece':
+      return 'pieces';
+    case 'slice':
+      return 'slices';
+    case 'bowl':
+      return 'bowls';
+    case 'cup':
+      return 'cups';
+    case 'scoop':
+      return 'scoops';
+    case 'glass':
+      return 'glasses';
+    case 'packet':
+      return 'packets';
+    case 'gram':
+      return 'g';
+    default:
+      return normalized;
+  }
 }

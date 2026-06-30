@@ -21,6 +21,8 @@ class PhotoScanScreen extends ConsumerStatefulWidget {
 class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
   XFile? _image;
   bool _uploading = false;
+  String _progressLabel = '';
+  String _errorMessage = '';
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +31,12 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
       body: ListView(
         padding: const EdgeInsets.all(NovaSpacing.lg),
         children: [
+          const PageIntro(
+            title: 'Scan a meal',
+            subtitle: 'Review the detected foods and portions before saving.',
+            icon: Icons.camera_alt_outlined,
+          ),
+          const SizedBox(height: NovaSpacing.lg),
           NovaCard(
             child: Column(
               children: [
@@ -76,20 +84,34 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
             ),
           ),
           const SizedBox(height: NovaSpacing.lg),
-          const NovaCard(
-            child: Text(
-              'Photo nutrition is an estimate. You will review detected foods and portions before saving.',
-            ),
-          ),
+          if (_uploading) ...[
+            _ScanProgressCard(label: _progressLabel),
+            const SizedBox(height: NovaSpacing.lg),
+          ],
+          if (_errorMessage.isNotEmpty) ...[
+            ErrorBanner(message: _errorMessage),
+            const SizedBox(height: NovaSpacing.lg),
+          ],
+          const _PhotoDisclaimerCard(),
           const SizedBox(height: NovaSpacing.lg),
           NovaButton.primary(
-            label: _uploading ? 'Analyzing...' : 'Analyze photo',
+            label: _uploading ? 'Working...' : 'Upload and analyze',
             icon: Icons.auto_awesome,
             onPressed: _image == null || _uploading
                 ? null
                 : () async {
-                    setState(() => _uploading = true);
+                    setState(() {
+                      _uploading = true;
+                      _progressLabel = 'Uploading photo';
+                      _errorMessage = '';
+                    });
                     try {
+                      await Future<void>.delayed(
+                        const Duration(milliseconds: 150),
+                      );
+                      if (mounted) {
+                        setState(() => _progressLabel = 'Analyzing meal');
+                      }
                       final review = await ref
                           .read(nutritionRepositoryProvider)
                           .uploadMealPhoto(_image!.path);
@@ -106,10 +128,11 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
                       }
                     } catch (error) {
                       if (context.mounted) {
-                        setState(() => _uploading = false);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(error.toString())),
-                        );
+                        setState(() {
+                          _uploading = false;
+                          _progressLabel = '';
+                          _errorMessage = error.toString();
+                        });
                       }
                     }
                   },
@@ -120,8 +143,75 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
   }
 
   Future<void> _pick(ImageSource source) async {
+    if (_uploading) return;
     final picked =
         await ImagePicker().pickImage(source: source, imageQuality: 85);
-    if (picked != null && mounted) setState(() => _image = picked);
+    if (picked != null && mounted) {
+      setState(() {
+        _image = picked;
+        _errorMessage = '';
+      });
+    }
+  }
+}
+
+class _ScanProgressCard extends StatelessWidget {
+  const _ScanProgressCard({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return NovaCard(
+      color: NovaColors.panelRaised,
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 3),
+          ),
+          const SizedBox(width: NovaSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.isEmpty ? 'Preparing scan' : label,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: NovaSpacing.xs),
+                const Text(
+                  'This can take a few seconds.',
+                  style: TextStyle(color: NovaColors.graphite),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoDisclaimerCard extends StatelessWidget {
+  const _PhotoDisclaimerCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const NovaCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: NovaColors.gold),
+          SizedBox(width: NovaSpacing.md),
+          Expanded(
+            child: Text(
+              'Photo nutrition is an estimate. Confirm food and portion size for better accuracy.',
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

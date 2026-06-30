@@ -26,12 +26,21 @@ void main() {
           'user_quantity_value': '6.000',
           'effective_quantity_value': '6.000',
           'effective_quantity_unit': 'egg',
+          'grams_per_unit_estimate': '50.000',
           'effective_total_grams': '300.000',
+          'min_total_grams_estimate': '275.000',
+          'max_total_grams_estimate': '325.000',
           'calories_kcal': '465.000',
           'protein_g': '37.800',
           'carbs_g': '3.300',
           'fat_g': '31.800',
           'confidence_score': '0.8800',
+          'source_badges': [
+            {
+              'source_type': 'IFCT_2017',
+              'food_verified': true,
+            }
+          ],
           'warnings': [],
           'alternative_matches': [
             {
@@ -57,7 +66,16 @@ void main() {
     expect(review.warnings, contains('AI estimate needs review'));
     expect(review.items.single.quantity, 6);
     expect(review.items.single.grams, 300);
+    expect(review.items.single.gramsPerUnit, 50);
+    expect(review.items.single.minGrams, 275);
+    expect(review.items.single.maxGrams, 325);
+    expect(review.items.single.portionLabel, '6 eggs');
+    expect(review.items.single.gramsLabel, '300g');
+    expect(review.items.single.detectedName, 'boiled egg');
+    expect(review.items.single.matchedFoodName, 'Egg, whole, boiled');
+    expect(review.items.single.sourceBadges.single, 'IFCT_2017 verified');
     expect(review.items.single.matchedFoodId, 'food-1');
     expect(review.items.single.alternatives.single.name, 'Egg, whole, boiled');
+    expect(review.hasConfirmableItems, isTrue);
   });
 }

@@ -1093,10 +1093,13 @@ class MockNutritionRepository implements NutritionRepository {
         PhotoReviewItem(
           id: 'photo-egg',
           name: 'Boiled eggs',
+          detectedName: 'boiled egg',
+          matchedFoodName: 'Egg, whole, boiled',
           matchedFoodId: 'egg',
           quantity: 5,
           unit: 'egg',
           grams: 250,
+          gramsPerUnit: 50,
           preview: MacroPreview(
             caloriesKcal: 388,
             proteinG: 31.5,
@@ -1129,10 +1132,13 @@ class MockNutritionRepository implements NutritionRepository {
         PhotoReviewItem(
           id: 'photo-egg',
           name: 'Boiled eggs',
+          detectedName: 'boiled egg',
+          matchedFoodName: 'Egg, whole, boiled',
           matchedFoodId: 'egg',
           quantity: 6,
           unit: 'egg',
           grams: 300,
+          gramsPerUnit: 50,
           preview: MacroPreview(
             caloriesKcal: 465,
             proteinG: 37.8,
