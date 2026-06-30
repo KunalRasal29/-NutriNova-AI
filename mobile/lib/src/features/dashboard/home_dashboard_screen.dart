@@ -41,36 +41,7 @@ class HomeDashboardScreen extends ConsumerWidget {
               const SizedBox(height: NovaSpacing.lg),
               _CaloriesHero(snapshot: data),
               const SizedBox(height: NovaSpacing.lg),
-              Row(
-                children: [
-                  Expanded(
-                    child: MetricCard(
-                      label: 'Protein',
-                      value: '${data.proteinG.toStringAsFixed(0)}g',
-                      icon: Icons.fitness_center,
-                      color: NovaColors.coral,
-                    ),
-                  ),
-                  const SizedBox(width: NovaSpacing.md),
-                  Expanded(
-                    child: MetricCard(
-                      label: 'Carbs',
-                      value: '${data.carbsG.toStringAsFixed(0)}g',
-                      icon: Icons.grain,
-                      color: NovaColors.gold,
-                    ),
-                  ),
-                  const SizedBox(width: NovaSpacing.md),
-                  Expanded(
-                    child: MetricCard(
-                      label: 'Fat',
-                      value: '${data.fatG.toStringAsFixed(0)}g',
-                      icon: Icons.opacity,
-                      color: NovaColors.violet,
-                    ),
-                  ),
-                ],
-              ),
+              _NutritionSnapshot(snapshot: data),
               const SizedBox(height: NovaSpacing.lg),
               const _ActionGrid(),
               const SizedBox(height: NovaSpacing.lg),
@@ -183,8 +154,11 @@ class _CaloriesHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final progress = snapshot.targetCalories == 0
         ? 0.0
-        : (snapshot.consumedCalories / snapshot.targetCalories).clamp(0.0, 1.0);
+        : (snapshot.consumedCalories / snapshot.targetCalories)
+            .clamp(0.0, 1.0)
+            .toDouble();
     final remaining = snapshot.targetCalories - snapshot.consumedCalories;
+    final isOver = remaining < 0;
     return NovaCard(
       color: NovaColors.panel,
       child: Column(
@@ -193,7 +167,7 @@ class _CaloriesHero extends StatelessWidget {
           Row(
             children: [
               Text(
-                'Calories',
+                'Calories remaining',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -210,8 +184,8 @@ class _CaloriesHero extends StatelessWidget {
           Row(
             children: [
               SizedBox(
-                width: 132,
-                height: 132,
+                width: 136,
+                height: 136,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
@@ -220,24 +194,26 @@ class _CaloriesHero extends StatelessWidget {
                         strokeWidth: 12,
                         value: progress,
                         backgroundColor: NovaColors.ink,
-                        valueColor:
-                            const AlwaysStoppedAnimation(NovaColors.blue),
+                        valueColor: AlwaysStoppedAnimation(
+                          isOver ? NovaColors.coral : NovaColors.blue,
+                        ),
                       ),
                     ),
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          remaining.clamp(0, 9999).toStringAsFixed(0),
+                          remaining.abs().toStringAsFixed(0),
                           style: const TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const Text(
-                          'Remaining',
+                        Text(
+                          isOver ? 'Over' : 'Remaining',
                           style: TextStyle(
-                            color: NovaColors.graphite,
+                            color:
+                                isOver ? NovaColors.coral : NovaColors.graphite,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -252,7 +228,7 @@ class _CaloriesHero extends StatelessWidget {
                   children: [
                     _CalorieLine(
                       icon: Icons.flag_outlined,
-                      label: 'Base Goal',
+                      label: 'Goal',
                       value: snapshot.targetCalories,
                     ),
                     const SizedBox(height: NovaSpacing.md),
@@ -273,6 +249,113 @@ class _CaloriesHero extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: NovaSpacing.lg),
+          _CalorieEquation(
+            goal: snapshot.targetCalories,
+            food: snapshot.consumedCalories,
+            exercise: 0,
+            remaining: remaining,
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 10,
+              value: progress,
+              backgroundColor: NovaColors.ink,
+              valueColor: AlwaysStoppedAnimation(
+                isOver ? NovaColors.coral : NovaColors.blue,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalorieEquation extends StatelessWidget {
+  const _CalorieEquation({
+    required this.goal,
+    required this.food,
+    required this.exercise,
+    required this.remaining,
+  });
+
+  final double goal;
+  final double food;
+  final double exercise;
+  final double remaining;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: NovaColors.ink,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: NovaColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: NovaSpacing.md,
+          vertical: NovaSpacing.sm,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _EquationTerm(value: goal, label: 'Goal'),
+            const Text('-', style: TextStyle(color: NovaColors.graphite)),
+            _EquationTerm(value: food, label: 'Food'),
+            const Text('+', style: TextStyle(color: NovaColors.graphite)),
+            _EquationTerm(value: exercise, label: 'Exercise'),
+            const Text('=', style: TextStyle(color: NovaColors.graphite)),
+            _EquationTerm(
+              value: remaining,
+              label: remaining < 0 ? 'Over' : 'Left',
+              color: remaining < 0 ? NovaColors.coral : NovaColors.blue,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EquationTerm extends StatelessWidget {
+  const _EquationTerm({
+    required this.value,
+    required this.label,
+    this.color = Colors.white,
+  });
+
+  final double value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Flexible(
+      child: Column(
+        children: [
+          Text(
+            value.abs().toStringAsFixed(0),
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: NovaColors.graphite,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ],
       ),
@@ -317,50 +400,243 @@ class _CalorieLine extends StatelessWidget {
   }
 }
 
+class _NutritionSnapshot extends StatelessWidget {
+  const _NutritionSnapshot({required this.snapshot});
+
+  final DashboardSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final calorieTarget =
+        snapshot.targetCalories <= 0 ? 2000.0 : snapshot.targetCalories;
+    final proteinTarget = calorieTarget * 0.30 / 4;
+    final carbTarget = calorieTarget * 0.40 / 4;
+    final fatTarget = calorieTarget * 0.30 / 9;
+    final calcium = _micro('calcium_mg');
+    final iron = _micro('iron_mg');
+    final potassium = _micro('potassium_mg');
+    final cholesterol = _micro('cholesterol_mg');
+    final saturatedFat = _micro('saturated_fat_g');
+
+    return NovaCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionHeader(title: 'Nutrition today'),
+          const SizedBox(height: NovaSpacing.md),
+          NutritionMetricGrid(
+            items: [
+              NutritionMetricItem(
+                label: 'Food',
+                value: '${snapshot.consumedCalories.toStringAsFixed(0)} kcal',
+                icon: Icons.restaurant,
+                color: NovaColors.blue,
+              ),
+              NutritionMetricItem(
+                label: 'Protein',
+                value: '${snapshot.proteinG.toStringAsFixed(0)}g',
+                icon: Icons.fitness_center,
+                color: NovaColors.coral,
+              ),
+              NutritionMetricItem(
+                label: 'Carbs',
+                value: '${snapshot.carbsG.toStringAsFixed(0)}g',
+                icon: Icons.grain,
+                color: NovaColors.gold,
+              ),
+              NutritionMetricItem(
+                label: 'Fat',
+                value: '${snapshot.fatG.toStringAsFixed(0)}g',
+                icon: Icons.opacity,
+                color: NovaColors.violet,
+              ),
+              NutritionMetricItem(
+                label: 'Fiber',
+                value: '${snapshot.fiberG.toStringAsFixed(0)}g',
+                icon: Icons.grass_outlined,
+                color: NovaColors.lime,
+              ),
+              NutritionMetricItem(
+                label: 'Sugar',
+                value: '${snapshot.sugarG.toStringAsFixed(0)}g',
+                icon: Icons.cookie_outlined,
+                color: NovaColors.gold,
+              ),
+              NutritionMetricItem(
+                label: 'Sodium',
+                value: '${snapshot.sodiumMg.toStringAsFixed(0)}mg',
+                icon: Icons.science_outlined,
+                color: NovaColors.blue,
+              ),
+              if (calcium > 0)
+                NutritionMetricItem(
+                  label: 'Calcium',
+                  value: '${calcium.toStringAsFixed(0)}mg',
+                  icon: Icons.health_and_safety_outlined,
+                  color: NovaColors.mint,
+                ),
+              if (iron > 0)
+                NutritionMetricItem(
+                  label: 'Iron',
+                  value: '${iron.toStringAsFixed(1)}mg',
+                  icon: Icons.bloodtype_outlined,
+                  color: NovaColors.coral,
+                ),
+              if (potassium > 0)
+                NutritionMetricItem(
+                  label: 'Potassium',
+                  value: '${potassium.toStringAsFixed(0)}mg',
+                  icon: Icons.bolt_outlined,
+                  color: NovaColors.lime,
+                ),
+              if (cholesterol > 0)
+                NutritionMetricItem(
+                  label: 'Cholesterol',
+                  value: '${cholesterol.toStringAsFixed(0)}mg',
+                  icon: Icons.monitor_heart_outlined,
+                  color: NovaColors.violet,
+                ),
+              if (saturatedFat > 0)
+                NutritionMetricItem(
+                  label: 'Sat fat',
+                  value: '${saturatedFat.toStringAsFixed(1)}g',
+                  icon: Icons.water_drop_outlined,
+                  color: NovaColors.violet,
+                ),
+            ],
+          ),
+          const SizedBox(height: NovaSpacing.lg),
+          NutrientProgressRow(
+            label: 'Protein',
+            value: snapshot.proteinG,
+            target: proteinTarget,
+            unit: 'g',
+            color: NovaColors.coral,
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          NutrientProgressRow(
+            label: 'Carbs',
+            value: snapshot.carbsG,
+            target: carbTarget,
+            unit: 'g',
+            color: NovaColors.gold,
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          NutrientProgressRow(
+            label: 'Fat',
+            value: snapshot.fatG,
+            target: fatTarget,
+            unit: 'g',
+            color: NovaColors.violet,
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          NutrientProgressRow(
+            label: 'Fiber',
+            value: snapshot.fiberG,
+            target: 30,
+            unit: 'g',
+            color: NovaColors.lime,
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          NutrientProgressRow(
+            label: 'Sodium',
+            value: snapshot.sodiumMg,
+            target: 2300,
+            unit: 'mg',
+            color: NovaColors.blue,
+          ),
+          if (snapshot.carbsG == 0 &&
+              (snapshot.proteinG > 0 || snapshot.fatG > 0)) ...[
+            const SizedBox(height: NovaSpacing.md),
+            const _DashboardNote(
+              text:
+                  '0g carbs can be correct when today’s logged food is plain meat, fish, eggs, or oils. Add sauces, breading, rice, roti, or sides separately if they were part of the meal.',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  double _micro(String key) => snapshot.micronutrients[key] ?? 0;
+}
+
+class _DashboardNote extends StatelessWidget {
+  const _DashboardNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: NovaColors.blue.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: NovaColors.blue.withValues(alpha: 0.28)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(NovaSpacing.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline, color: NovaColors.blue, size: 20),
+            const SizedBox(width: NovaSpacing.sm),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ActionGrid extends StatelessWidget {
   const _ActionGrid();
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: NovaSpacing.md,
-      crossAxisSpacing: NovaSpacing.md,
-      childAspectRatio: 2.6,
-      children: [
-        NovaButton.primary(
-          label: 'Log food',
-          icon: Icons.add_circle_outline,
-          onPressed: () => context.go('/meals/manual'),
-        ),
-        NovaButton.secondary(
-          label: 'Scan meal',
-          icon: Icons.camera_alt_outlined,
-          onPressed: () => context.go('/photos/scan'),
-        ),
-        NovaButton.secondary(
-          label: 'Quick add',
-          icon: Icons.flash_on_outlined,
-          onPressed: () => context.go('/meals/quick-add'),
-        ),
-        NovaButton.secondary(
-          label: 'Barcode',
-          icon: Icons.qr_code_scanner,
-          onPressed: () => context.go('/barcode'),
-        ),
-        NovaButton.secondary(
-          label: 'Add habit',
-          icon: Icons.check_box_outlined,
-          onPressed: () => context.go('/habits'),
-        ),
-        NovaButton.secondary(
-          label: 'Progress',
-          icon: Icons.insights_outlined,
-          onPressed: () => context.go('/analytics'),
-        ),
-      ],
+    return NovaCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionHeader(title: 'Log quickly'),
+          const SizedBox(height: NovaSpacing.md),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            mainAxisSpacing: NovaSpacing.md,
+            crossAxisSpacing: NovaSpacing.md,
+            childAspectRatio: 2.45,
+            children: [
+              NovaButton.primary(
+                label: 'Log food',
+                icon: Icons.add_circle_outline,
+                onPressed: () => context.go('/meals/manual'),
+              ),
+              NovaButton.secondary(
+                label: 'Meal scan',
+                icon: Icons.camera_alt_outlined,
+                onPressed: () => context.go('/photos/scan'),
+              ),
+              NovaButton.secondary(
+                label: 'Quick add',
+                icon: Icons.flash_on_outlined,
+                onPressed: () => context.go('/meals/quick-add'),
+              ),
+              NovaButton.secondary(
+                label: 'Barcode',
+                icon: Icons.qr_code_scanner,
+                onPressed: () => context.go('/barcode'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -478,11 +754,30 @@ class _MealGroup extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.restaurant_menu, size: 18),
               title: Text(item.foodName, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                _itemSubtitle(item),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: Text(item.caloriesKcal.toStringAsFixed(0)),
             ),
         ],
       ),
     );
+  }
+
+  String _itemSubtitle(MealItemSummary item) {
+    final amount = item.grams > 0
+        ? '${item.grams.toStringAsFixed(0)}g'
+        : item.unit.isEmpty
+            ? ''
+            : '${item.quantity.toStringAsFixed(item.quantity % 1 == 0 ? 0 : 1)} ${item.unit}';
+    final macros = [
+      'P ${item.proteinG.toStringAsFixed(0)}g',
+      'C ${item.carbsG.toStringAsFixed(0)}g',
+      'F ${item.fatG.toStringAsFixed(0)}g',
+    ].join('  ');
+    return amount.isEmpty ? macros : '$amount • $macros';
   }
 
   String _mealLabel(String type) {

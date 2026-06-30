@@ -18,10 +18,11 @@ class FoodDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
-  final _quantity = TextEditingController(text: '1');
+  final _quantity = TextEditingController(text: '100');
   final _grams = TextEditingController();
-  String _unit = 'serving';
+  String _unit = 'gram';
   String _mealType = 'breakfast';
+  String? _initializedFoodId;
   bool _saving = false;
 
   static const _units = [
@@ -64,6 +65,7 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
   }
 
   Widget _buildFood(FoodDetail food) {
+    _hydrateDefaults(food);
     final quantity = double.tryParse(_quantity.text) ?? 1;
     final totalGrams = double.tryParse(_grams.text);
     final preview = food.previewFor(
@@ -78,7 +80,12 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
     );
 
     return ListView(
-      padding: const EdgeInsets.all(NovaSpacing.lg),
+      padding: const EdgeInsets.fromLTRB(
+        NovaSpacing.lg,
+        NovaSpacing.lg,
+        NovaSpacing.lg,
+        120,
+      ),
       children: [
         NovaCard(
           child: Column(
@@ -206,6 +213,15 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
     );
   }
 
+  void _hydrateDefaults(FoodDetail food) {
+    if (_initializedFoodId == food.id) return;
+    _initializedFoodId = food.id;
+    _unit = 'gram';
+    final grams = food.defaultServingG <= 0 ? 100 : food.defaultServingG;
+    _quantity.text = grams.toStringAsFixed(grams % 1 == 0 ? 0 : 1);
+    _grams.clear();
+  }
+
   String _unitLabel(String unit) {
     return unit
         .replaceAll('_', ' ')
@@ -231,16 +247,139 @@ class _NutritionPreview extends StatelessWidget {
         children: [
           const SectionHeader(title: 'Nutrition preview'),
           const SizedBox(height: NovaSpacing.md),
-          Text('${grams.toStringAsFixed(0)}g total'),
-          const SizedBox(height: NovaSpacing.md),
-          NutritionPreviewBar(
-            caloriesKcal: preview.caloriesKcal,
-            proteinG: preview.proteinG,
-            carbsG: preview.carbsG,
-            fatG: preview.fatG,
-            compact: true,
+          Row(
+            children: [
+              const Icon(Icons.scale_outlined, color: NovaColors.graphite),
+              const SizedBox(width: NovaSpacing.sm),
+              Text(
+                '${grams.toStringAsFixed(0)}g total',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
           ),
+          const SizedBox(height: NovaSpacing.lg),
+          NutritionMetricGrid(
+            items: [
+              NutritionMetricItem(
+                label: 'Calories',
+                value: '${preview.caloriesKcal.toStringAsFixed(0)} kcal',
+                icon: Icons.local_fire_department,
+                color: NovaColors.mint,
+              ),
+              NutritionMetricItem(
+                label: 'Protein',
+                value: '${preview.proteinG.toStringAsFixed(1)}g',
+                icon: Icons.fitness_center,
+                color: NovaColors.coral,
+              ),
+              NutritionMetricItem(
+                label: 'Carbs',
+                value: '${preview.carbsG.toStringAsFixed(1)}g',
+                icon: Icons.grain,
+                color: NovaColors.gold,
+              ),
+              NutritionMetricItem(
+                label: 'Fat',
+                value: '${preview.fatG.toStringAsFixed(1)}g',
+                icon: Icons.opacity,
+                color: NovaColors.violet,
+              ),
+              NutritionMetricItem(
+                label: 'Fiber',
+                value: '${preview.fiberG.toStringAsFixed(1)}g',
+                icon: Icons.grass_outlined,
+                color: NovaColors.lime,
+              ),
+              NutritionMetricItem(
+                label: 'Sugar',
+                value: '${preview.sugarG.toStringAsFixed(1)}g',
+                icon: Icons.cookie_outlined,
+                color: NovaColors.gold,
+              ),
+              NutritionMetricItem(
+                label: 'Sodium',
+                value: '${preview.sodiumMg.toStringAsFixed(0)}mg',
+                icon: Icons.science_outlined,
+                color: NovaColors.blue,
+              ),
+              NutritionMetricItem(
+                label: 'Sat fat',
+                value: '${preview.saturatedFatG.toStringAsFixed(1)}g',
+                icon: Icons.water_drop_outlined,
+                color: NovaColors.violet,
+              ),
+              if (preview.calciumMg > 0)
+                NutritionMetricItem(
+                  label: 'Calcium',
+                  value: '${preview.calciumMg.toStringAsFixed(0)}mg',
+                  icon: Icons.health_and_safety_outlined,
+                  color: NovaColors.mint,
+                ),
+              if (preview.ironMg > 0)
+                NutritionMetricItem(
+                  label: 'Iron',
+                  value: '${preview.ironMg.toStringAsFixed(1)}mg',
+                  icon: Icons.bloodtype_outlined,
+                  color: NovaColors.coral,
+                ),
+              if (preview.potassiumMg > 0)
+                NutritionMetricItem(
+                  label: 'Potassium',
+                  value: '${preview.potassiumMg.toStringAsFixed(0)}mg',
+                  icon: Icons.bolt_outlined,
+                  color: NovaColors.lime,
+                ),
+            ],
+          ),
+          if (preview.carbsG == 0 &&
+              (preview.proteinG > 0 || preview.fatG > 0)) ...[
+            const SizedBox(height: NovaSpacing.md),
+            const _NutritionNote(
+              text:
+                  '0g carbs is expected for plain meat, fish, eggs, and oils. It is not missing data unless the food has breading, sauce, or added ingredients.',
+            ),
+          ],
+          if (preview.carbsG > 0 && preview.fiberG == 0) ...[
+            const SizedBox(height: NovaSpacing.md),
+            const _NutritionNote(
+              text:
+                  'Fiber can show as 0 when the source does not publish it. Calories and macros still come from the selected food record.',
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _NutritionNote extends StatelessWidget {
+  const _NutritionNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: NovaColors.blue.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: NovaColors.blue.withValues(alpha: 0.28)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(NovaSpacing.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline, color: NovaColors.blue, size: 20),
+            const SizedBox(width: NovaSpacing.sm),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

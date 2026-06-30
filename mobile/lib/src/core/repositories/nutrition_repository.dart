@@ -85,12 +85,17 @@ class ApiNutritionRepository implements NutritionRepository {
         data['daily_target_progress'] as Map<String, dynamic>? ?? {};
     final caloriesTarget =
         targetProgress['calories_kcal'] as Map<String, dynamic>? ?? {};
+    final micronutrients = _doubleMap(data['micronutrients']);
     return DashboardSnapshot(
       consumedCalories: _asDouble(data['calories_kcal']),
       targetCalories: _asDouble(caloriesTarget['target'], fallback: 2000),
       proteinG: _asDouble(data['protein_g']),
       carbsG: _asDouble(data['carbs_g']),
       fatG: _asDouble(data['fat_g']),
+      fiberG: _asDouble(data['fiber_g']),
+      sugarG: _asDouble(data['sugar_g']),
+      sodiumMg: _asDouble(data['sodium_mg']),
+      micronutrients: micronutrients,
       waterCompleted: habits
           .where((habit) => habit.unit == 'glasses')
           .fold<int>(0, (sum, habit) => sum + habit.completedCount),
@@ -432,6 +437,13 @@ List<dynamic> _extractList(Object? data) {
   return const [];
 }
 
+Map<String, double> _doubleMap(Object? value) {
+  if (value is! Map<String, dynamic>) return const {};
+  return {
+    for (final entry in value.entries) entry.key: _asDouble(entry.value),
+  };
+}
+
 String _dateString(DateTime date) {
   final local = date.toLocal();
   final month = local.month.toString().padLeft(2, '0');
@@ -457,6 +469,19 @@ String _dashboardInsight({
   return 'Today’s log is building well. Keep confirming portions for the most accurate trends.';
 }
 
+double _mockServingGrams(String foodId) {
+  switch (foodId) {
+    case 'egg':
+      return 50;
+    case 'banana':
+      return 118;
+    case 'chapati':
+      return 45;
+    default:
+      return 100;
+  }
+}
+
 class MockNutritionRepository implements NutritionRepository {
   static const _foods = [
     FoodSummary(
@@ -472,6 +497,27 @@ class MockNutritionRepository implements NutritionRepository {
         proteinG: 12.6,
         carbsG: 1.1,
         fatG: 10.6,
+        sodiumMg: 124,
+        cholesterolMg: 373,
+        saturatedFatG: 3.3,
+      ),
+    ),
+    FoodSummary(
+      id: 'chicken-breast',
+      name: 'Chicken breast, cooked, skinless',
+      brand: '',
+      sourceBadge: 'USDA_FDC',
+      confidenceScore: 0.96,
+      dataClassification: 'official_verified',
+      verified: true,
+      preview: MacroPreview(
+        caloriesKcal: 165,
+        proteinG: 31,
+        carbsG: 0,
+        fatG: 3.6,
+        sodiumMg: 74,
+        cholesterolMg: 85,
+        saturatedFatG: 1,
       ),
     ),
     FoodSummary(
@@ -487,6 +533,9 @@ class MockNutritionRepository implements NutritionRepository {
         proteinG: 2.7,
         carbsG: 28,
         fatG: 0.3,
+        fiberG: 0.4,
+        sugarG: 0.1,
+        sodiumMg: 1,
       ),
     ),
     FoodSummary(
@@ -502,6 +551,45 @@ class MockNutritionRepository implements NutritionRepository {
         proteinG: 7.2,
         carbsG: 18,
         fatG: 2,
+        fiberG: 5,
+        sugarG: 1.8,
+        sodiumMg: 240,
+      ),
+    ),
+    FoodSummary(
+      id: 'banana',
+      name: 'Banana',
+      brand: '',
+      sourceBadge: 'USDA_FDC',
+      confidenceScore: 0.93,
+      dataClassification: 'official_verified',
+      verified: true,
+      preview: MacroPreview(
+        caloriesKcal: 89,
+        proteinG: 1.1,
+        carbsG: 22.8,
+        fatG: 0.3,
+        fiberG: 2.6,
+        sugarG: 12.2,
+        potassiumMg: 358,
+      ),
+    ),
+    FoodSummary(
+      id: 'chapati',
+      name: 'Whole wheat chapati',
+      brand: 'Home style',
+      sourceBadge: 'IFCT_2017',
+      confidenceScore: 0.88,
+      dataClassification: 'official_verified',
+      verified: true,
+      preview: MacroPreview(
+        caloriesKcal: 260,
+        proteinG: 8.7,
+        carbsG: 46.4,
+        fatG: 4.5,
+        fiberG: 6.7,
+        sugarG: 1.7,
+        sodiumMg: 300,
       ),
     ),
   ];
@@ -515,6 +603,15 @@ class MockNutritionRepository implements NutritionRepository {
       proteinG: 96,
       carbsG: 168,
       fatG: 48,
+      fiberG: 24,
+      sugarG: 34,
+      sodiumMg: 1180,
+      micronutrients: const {
+        'calcium_mg': 620,
+        'iron_mg': 11,
+        'potassium_mg': 2450,
+        'cholesterol_mg': 210,
+      },
       waterCompleted: 5,
       waterTarget: 8,
       meals: const [
@@ -522,11 +619,23 @@ class MockNutritionRepository implements NutritionRepository {
           foodName: 'Egg bhurji and toast',
           mealType: 'breakfast',
           caloriesKcal: 420,
+          proteinG: 24,
+          carbsG: 30,
+          fatG: 22,
+          fiberG: 4,
+          sugarG: 5,
+          sodiumMg: 410,
         ),
         MealItemSummary(
           foodName: 'Dal rice bowl',
           mealType: 'lunch',
           caloriesKcal: 610,
+          proteinG: 26,
+          carbsG: 82,
+          fatG: 18,
+          fiberG: 11,
+          sugarG: 7,
+          sodiumMg: 520,
         ),
       ],
       habits: [
@@ -580,6 +689,7 @@ class MockNutritionRepository implements NutritionRepository {
   Future<List<FoodSummary>> searchFoods(String query) async {
     await Future<void>.delayed(const Duration(milliseconds: 250));
     final normalized = query.toLowerCase();
+    if (normalized.trim().isEmpty) return _foods;
     return _foods
         .where((food) => food.name.toLowerCase().contains(normalized))
         .toList();
@@ -603,12 +713,12 @@ class MockNutritionRepository implements NutritionRepository {
       confidenceScore: food.confidenceScore,
       dataClassification: food.dataClassification,
       verified: food.verified,
-      defaultServingG: 50,
-      servings: const [
+      defaultServingG: _mockServingGrams(food.id),
+      servings: [
         FoodServingOption(
           id: 'default',
           name: '1 serving',
-          grams: 50,
+          grams: _mockServingGrams(food.id),
           isDefault: true,
         ),
       ],
@@ -636,6 +746,54 @@ class MockNutritionRepository implements NutritionRepository {
           name: 'Fat',
           unit: 'g',
           amountPer100g: food.preview.fatG,
+        ),
+        FoodNutrientValue(
+          code: 'fiber_g',
+          name: 'Fiber',
+          unit: 'g',
+          amountPer100g: food.preview.fiberG,
+        ),
+        FoodNutrientValue(
+          code: 'sugar_g',
+          name: 'Sugar',
+          unit: 'g',
+          amountPer100g: food.preview.sugarG,
+        ),
+        FoodNutrientValue(
+          code: 'sodium_mg',
+          name: 'Sodium',
+          unit: 'mg',
+          amountPer100g: food.preview.sodiumMg,
+        ),
+        FoodNutrientValue(
+          code: 'calcium_mg',
+          name: 'Calcium',
+          unit: 'mg',
+          amountPer100g: food.preview.calciumMg,
+        ),
+        FoodNutrientValue(
+          code: 'iron_mg',
+          name: 'Iron',
+          unit: 'mg',
+          amountPer100g: food.preview.ironMg,
+        ),
+        FoodNutrientValue(
+          code: 'potassium_mg',
+          name: 'Potassium',
+          unit: 'mg',
+          amountPer100g: food.preview.potassiumMg,
+        ),
+        FoodNutrientValue(
+          code: 'cholesterol_mg',
+          name: 'Cholesterol',
+          unit: 'mg',
+          amountPer100g: food.preview.cholesterolMg,
+        ),
+        FoodNutrientValue(
+          code: 'saturated_fat_g',
+          name: 'Saturated fat',
+          unit: 'g',
+          amountPer100g: food.preview.saturatedFatG,
         ),
       ],
       isFavorite: false,
@@ -675,14 +833,11 @@ class MockNutritionRepository implements NutritionRepository {
     required String unit,
     double? totalGrams,
   }) async {
-    final food = _foods.firstWhere((food) => food.id == foodId);
-    final grams = totalGrams ?? quantity * 50;
-    final scale = grams / 100;
-    return MacroPreview(
-      caloriesKcal: food.preview.caloriesKcal * scale,
-      proteinG: food.preview.proteinG * scale,
-      carbsG: food.preview.carbsG * scale,
-      fatG: food.preview.fatG * scale,
+    final food = await foodDetail(foodId);
+    return food.previewFor(
+      quantity: quantity,
+      unit: unit,
+      totalGrams: totalGrams,
     );
   }
 

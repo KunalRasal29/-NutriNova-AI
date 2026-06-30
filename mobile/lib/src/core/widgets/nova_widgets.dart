@@ -25,13 +25,99 @@ class NovaScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      appBar: AppBar(title: Text(title), actions: actions),
-      body: SafeArea(child: body),
+      appBar: _NovaTopBar(title: title, actions: actions),
+      body: SafeArea(child: _MobileFrame(child: body)),
       bottomNavigationBar: bottomNavigationBar ??
           (showBottomNavigation ? const _NovaBottomBar() : null),
-      floatingActionButton: floatingActionButton ??
-          (showBottomNavigation ? const _NovaAddButton() : null),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: floatingActionButton,
+    );
+  }
+}
+
+class _NovaTopBar extends StatelessWidget implements PreferredSizeWidget {
+  const _NovaTopBar({required this.title, this.actions});
+
+  final String title;
+  final List<Widget>? actions;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    final routeCanPop = ModalRoute.of(context)?.canPop ?? false;
+    return ColoredBox(
+      color: NovaColors.ink,
+      child: SafeArea(
+        bottom: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SizedBox(
+              height: kToolbarHeight,
+              child: IconTheme(
+                data: const IconThemeData(color: Colors.white),
+                child: DefaultTextStyle(
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                          ) ??
+                      const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                  child: NavigationToolbar(
+                    centerMiddle: true,
+                    leading: routeCanPop ? const BackButton() : null,
+                    middle: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: actions == null
+                        ? null
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: actions!,
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileFrame extends StatelessWidget {
+  const _MobileFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth <= 620) return child;
+        return Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                color: NovaColors.surface,
+                border: Border.symmetric(
+                  vertical: BorderSide(color: NovaColors.border),
+                ),
+              ),
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -42,53 +128,73 @@ class _NovaBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = GoRouterState.of(context).uri.path;
-    return BottomAppBar(
-      height: 76,
-      color: NovaColors.ink,
-      elevation: 0,
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8,
-      child: Row(
-        children: [
-          Expanded(
-            child: _NovaNavItem(
-              label: 'Dashboard',
-              icon: Icons.dashboard_outlined,
-              selectedIcon: Icons.dashboard,
-              selected: path == '/home',
-              onTap: () => context.go('/home'),
-            ),
+    return Center(
+      heightFactor: 1,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: SizedBox(
+          height: 96,
+          child: Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: BottomAppBar(
+                  height: 76,
+                  color: NovaColors.ink,
+                  elevation: 0,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _NovaNavItem(
+                          label: 'Dashboard',
+                          icon: Icons.dashboard_outlined,
+                          selectedIcon: Icons.dashboard,
+                          selected: path == '/home',
+                          onTap: () => context.go('/home'),
+                        ),
+                      ),
+                      Expanded(
+                        child: _NovaNavItem(
+                          label: 'Diary',
+                          icon: Icons.menu_book_outlined,
+                          selectedIcon: Icons.menu_book,
+                          selected: path.startsWith('/meals') ||
+                              path.startsWith('/foods'),
+                          onTap: () => context.go('/meals'),
+                        ),
+                      ),
+                      const SizedBox(width: 72),
+                      Expanded(
+                        child: _NovaNavItem(
+                          label: 'Progress',
+                          icon: Icons.bar_chart_outlined,
+                          selectedIcon: Icons.bar_chart,
+                          selected: path == '/analytics',
+                          onTap: () => context.go('/analytics'),
+                        ),
+                      ),
+                      Expanded(
+                        child: _NovaNavItem(
+                          label: 'More',
+                          icon: Icons.more_horiz,
+                          selectedIcon: Icons.more_horiz,
+                          selected: path == '/profile' ||
+                              path == '/habits' ||
+                              path == '/recipes',
+                          onTap: () => context.go('/profile'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Positioned(top: 0, child: _NovaAddButton()),
+            ],
           ),
-          Expanded(
-            child: _NovaNavItem(
-              label: 'Diary',
-              icon: Icons.menu_book_outlined,
-              selectedIcon: Icons.menu_book,
-              selected: path.startsWith('/meals') || path.startsWith('/foods'),
-              onTap: () => context.go('/meals'),
-            ),
-          ),
-          const SizedBox(width: 72),
-          Expanded(
-            child: _NovaNavItem(
-              label: 'Progress',
-              icon: Icons.bar_chart_outlined,
-              selectedIcon: Icons.bar_chart,
-              selected: path == '/analytics',
-              onTap: () => context.go('/analytics'),
-            ),
-          ),
-          Expanded(
-            child: _NovaNavItem(
-              label: 'More',
-              icon: Icons.more_horiz,
-              selectedIcon: Icons.more_horiz,
-              selected:
-                  path == '/profile' || path == '/habits' || path == '/recipes',
-              onTap: () => context.go('/profile'),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -283,6 +389,145 @@ class _AddSheetTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class NutritionMetricItem {
+  const NutritionMetricItem({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+}
+
+class NutritionMetricGrid extends StatelessWidget {
+  const NutritionMetricGrid({required this.items, super.key});
+
+  final List<NutritionMetricItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      mainAxisSpacing: NovaSpacing.md,
+      crossAxisSpacing: NovaSpacing.md,
+      childAspectRatio: 2.35,
+      children: [
+        for (final item in items)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: NovaColors.panel,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: NovaColors.border),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(NovaSpacing.md),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 17,
+                    backgroundColor: item.color.withValues(alpha: 0.16),
+                    child: Icon(item.icon, color: item.color, size: 18),
+                  ),
+                  const SizedBox(width: NovaSpacing.md),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: NovaColors.graphite,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class NutrientProgressRow extends StatelessWidget {
+  const NutrientProgressRow({
+    required this.label,
+    required this.value,
+    required this.target,
+    required this.unit,
+    required this.color,
+    super.key,
+  });
+
+  final String label;
+  final double value;
+  final double target;
+  final String unit;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress =
+        target <= 0 ? 0.0 : (value / target).clamp(0.0, 1.0).toDouble();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+            Text(
+              '${value.toStringAsFixed(value >= 10 ? 0 : 1)} / '
+              '${target.toStringAsFixed(target >= 10 ? 0 : 1)} $unit',
+              style: const TextStyle(
+                color: NovaColors.graphite,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: NovaSpacing.sm),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 9,
+            backgroundColor: NovaColors.ink,
+            valueColor: AlwaysStoppedAnimation(color),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -43,14 +43,30 @@ class MacroPreview {
     required this.proteinG,
     required this.carbsG,
     required this.fatG,
+    this.fiberG = 0,
+    this.sugarG = 0,
+    this.sodiumMg = 0,
+    this.calciumMg = 0,
+    this.ironMg = 0,
+    this.potassiumMg = 0,
+    this.cholesterolMg = 0,
+    this.saturatedFatG = 0,
   });
 
   factory MacroPreview.fromJson(Map<String, dynamic> json) {
     return MacroPreview(
-      caloriesKcal: _asDouble(json['calories_kcal']),
+      caloriesKcal: _asDouble(json['calories_kcal'] ?? json['calories']),
       proteinG: _asDouble(json['protein_g']),
       carbsG: _asDouble(json['carbs_g']),
       fatG: _asDouble(json['fat_g']),
+      fiberG: _asDouble(json['fiber_g']),
+      sugarG: _asDouble(json['sugar_g']),
+      sodiumMg: _asDouble(json['sodium_mg']),
+      calciumMg: _asDouble(json['calcium_mg']),
+      ironMg: _asDouble(json['iron_mg']),
+      potassiumMg: _asDouble(json['potassium_mg']),
+      cholesterolMg: _asDouble(json['cholesterol_mg']),
+      saturatedFatG: _asDouble(json['saturated_fat_g']),
     );
   }
 
@@ -58,6 +74,14 @@ class MacroPreview {
   final double proteinG;
   final double carbsG;
   final double fatG;
+  final double fiberG;
+  final double sugarG;
+  final double sodiumMg;
+  final double calciumMg;
+  final double ironMg;
+  final double potassiumMg;
+  final double cholesterolMg;
+  final double saturatedFatG;
 }
 
 class FoodSummary {
@@ -91,6 +115,14 @@ class FoodSummary {
         proteinG: _asDouble(nutrition['protein_g']),
         carbsG: _asDouble(nutrition['carbs_g']),
         fatG: _asDouble(nutrition['fat_g']),
+        fiberG: _asDouble(nutrition['fiber_g']),
+        sugarG: _asDouble(nutrition['sugar_g']),
+        sodiumMg: _asDouble(nutrition['sodium_mg']),
+        calciumMg: _asDouble(nutrition['calcium_mg']),
+        ironMg: _asDouble(nutrition['iron_mg']),
+        potassiumMg: _asDouble(nutrition['potassium_mg']),
+        cholesterolMg: _asDouble(nutrition['cholesterol_mg']),
+        saturatedFatG: _asDouble(nutrition['saturated_fat_g']),
       ),
     );
   }
@@ -224,6 +256,14 @@ class FoodDetail {
         proteinG: nutrientAmount('protein_g'),
         carbsG: nutrientAmount('carbs_g'),
         fatG: nutrientAmount('fat_g'),
+        fiberG: nutrientAmount('fiber_g'),
+        sugarG: nutrientAmount('sugar_g'),
+        sodiumMg: nutrientAmount('sodium_mg'),
+        calciumMg: nutrientAmount('calcium_mg'),
+        ironMg: nutrientAmount('iron_mg'),
+        potassiumMg: nutrientAmount('potassium_mg'),
+        cholesterolMg: nutrientAmount('cholesterol_mg'),
+        saturatedFatG: nutrientAmount('saturated_fat_g'),
       );
 
   double nutrientAmount(String code) {
@@ -275,6 +315,14 @@ class FoodDetail {
       proteinG: per100g.proteinG * scale,
       carbsG: per100g.carbsG * scale,
       fatG: per100g.fatG * scale,
+      fiberG: per100g.fiberG * scale,
+      sugarG: per100g.sugarG * scale,
+      sodiumMg: per100g.sodiumMg * scale,
+      calciumMg: per100g.calciumMg * scale,
+      ironMg: per100g.ironMg * scale,
+      potassiumMg: per100g.potassiumMg * scale,
+      cholesterolMg: per100g.cholesterolMg * scale,
+      saturatedFatG: per100g.saturatedFatG * scale,
     );
   }
 }
@@ -324,6 +372,12 @@ class MealItemSummary {
     required this.foodName,
     required this.mealType,
     required this.caloriesKcal,
+    this.proteinG = 0,
+    this.carbsG = 0,
+    this.fatG = 0,
+    this.fiberG = 0,
+    this.sugarG = 0,
+    this.sodiumMg = 0,
     this.brandName = '',
     this.source = '',
     this.confidence = 0,
@@ -339,11 +393,23 @@ class MealItemSummary {
     required String mealType,
   }) {
     final source = json['food_source'] as Map<String, dynamic>? ?? {};
+    final macros = json['macros_snapshot'] as Map<String, dynamic>? ?? {};
+    final nutrients = json['nutrients_snapshot'] as Map<String, dynamic>? ?? {};
     return MealItemSummary(
       foodName: json['food_name']?.toString() ?? 'Food',
       brandName: json['brand_name']?.toString() ?? '',
       mealType: mealType,
-      caloriesKcal: _asDouble(json['calories_kcal']),
+      caloriesKcal: _asDouble(
+        json['calories_kcal'] ??
+            macros['calories_kcal'] ??
+            nutrients['calories'],
+      ),
+      proteinG: _asDouble(json['protein_g'] ?? macros['protein_g']),
+      carbsG: _asDouble(json['carbs_g'] ?? macros['carbs_g']),
+      fatG: _asDouble(json['fat_g'] ?? macros['fat_g']),
+      fiberG: _asDouble(json['fiber_g'] ?? nutrients['fiber_g']),
+      sugarG: _asDouble(json['sugar_g'] ?? nutrients['sugar_g']),
+      sodiumMg: _asDouble(json['sodium_mg'] ?? nutrients['sodium_mg']),
       source: source['source_type']?.toString() ?? '',
       confidence: _asDouble(
         source['confidence_score'] ?? json['source_confidence'],
@@ -361,6 +427,12 @@ class MealItemSummary {
   final String brandName;
   final String mealType;
   final double caloriesKcal;
+  final double proteinG;
+  final double carbsG;
+  final double fatG;
+  final double fiberG;
+  final double sugarG;
+  final double sodiumMg;
   final String source;
   final double confidence;
   final bool verified;
@@ -423,6 +495,10 @@ class DashboardSnapshot {
     required this.latestWeightKg,
     required this.weightChangeKg,
     required this.insight,
+    this.fiberG = 0,
+    this.sugarG = 0,
+    this.sodiumMg = 0,
+    this.micronutrients = const {},
   });
 
   final double consumedCalories;
@@ -430,6 +506,10 @@ class DashboardSnapshot {
   final double proteinG;
   final double carbsG;
   final double fatG;
+  final double fiberG;
+  final double sugarG;
+  final double sodiumMg;
+  final Map<String, double> micronutrients;
   final int waterCompleted;
   final int waterTarget;
   final List<MealItemSummary> meals;
