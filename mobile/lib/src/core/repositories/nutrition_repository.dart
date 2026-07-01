@@ -60,7 +60,11 @@ abstract class NutritionRepository {
     required String unit,
     required String category,
   });
-  Future<void> checkHabit(String habitId, int completedCount);
+  Future<void> checkHabit(
+    String habitId,
+    int completedCount, {
+    bool isCompleted = true,
+  });
   Future<void> uncheckHabit(String habitId);
   Future<Map<String, dynamic>> monthHabitGrid(String month);
   Future<PhotoReview> uploadMealPhoto({
@@ -438,13 +442,17 @@ class ApiNutritionRepository implements NutritionRepository {
   }
 
   @override
-  Future<void> checkHabit(String habitId, int completedCount) async {
+  Future<void> checkHabit(
+    String habitId,
+    int completedCount, {
+    bool isCompleted = true,
+  }) async {
     await _apiClient.post(
       '/api/habits/$habitId/check/',
       data: {
         'date': _dateString(DateTime.now()),
         'completed_count': completedCount,
-        'is_completed': true,
+        'is_completed': isCompleted,
       },
     );
   }
@@ -1348,7 +1356,11 @@ class MockNutritionRepository implements NutritionRepository {
   }) async {}
 
   @override
-  Future<void> checkHabit(String habitId, int completedCount) async {}
+  Future<void> checkHabit(
+    String habitId,
+    int completedCount, {
+    bool isCompleted = true,
+  }) async {}
 
   @override
   Future<void> uncheckHabit(String habitId) async {}

@@ -330,6 +330,12 @@ class _NovaAddSheet extends StatelessWidget {
                   color: NovaColors.lime,
                   onTap: () => _go(context, '/weight/log'),
                 ),
+                _AddSheetTile(
+                  icon: Icons.add_task_outlined,
+                  label: 'Checklist',
+                  color: NovaColors.mint,
+                  onTap: () => _go(context, '/habits'),
+                ),
               ],
             ),
           ],

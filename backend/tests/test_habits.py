@@ -148,6 +148,46 @@ def test_check_habit_for_today(api_client, user):
 
 
 @pytest.mark.django_db
+def test_partial_habit_check_in_stays_open(api_client, user):
+    api_client.force_authenticate(user=user)
+    habit = create_habit_with_payload(
+        api_client,
+        {
+            "title": "Drink 8 glasses water",
+            "category": "water",
+            "recurrence_type": "daily",
+            "start_date": "2026-06-29",
+            "target_count": 8,
+            "unit": "glasses",
+            "color": "#0EA5E9",
+            "icon": "droplets",
+        },
+    )
+
+    response = api_client.post(
+        reverse("habit-check", args=[habit["id"]]),
+        {
+            "date": "2026-06-29",
+            "completed_count": 4,
+            "is_completed": False,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    assert payload["completed_count"] == 4
+    assert payload["is_completed"] is False
+
+    today = api_client.get(reverse("habit-today"), {"date": "2026-06-29"})
+    assert today.status_code == 200
+    assert today.json()["stats"]["completed"] == 0
+    assert today.json()["items"][0]["completed_count"] == 4
+    assert today.json()["items"][0]["is_completed"] is False
+    assert today.json()["items"][0]["completion_percentage"] == 50.0
+
+
+@pytest.mark.django_db
 def test_uncheck_habit(api_client, user):
     api_client.force_authenticate(user=user)
     habit = create_daily_habit(api_client)

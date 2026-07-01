@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/repositories/providers.dart';
 import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
 import '../auth/auth_controller.dart';
+import '../dashboard/dashboard_controller.dart';
 
 class ProfileSettingsScreen extends ConsumerWidget {
   const ProfileSettingsScreen({super.key});
@@ -13,6 +15,8 @@ class ProfileSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).valueOrNull;
     final config = ref.watch(appConfigProvider);
+    final dashboard = ref.watch(dashboardProvider).valueOrNull;
+    final habits = ref.watch(todayHabitsProvider).valueOrNull ?? const [];
 
     return NovaScaffold(
       title: 'Settings',
@@ -22,7 +26,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
           const PageIntro(
             title: 'NutriNova AI',
             subtitle:
-                'Privacy-first wellness tracking with verified sources, user custom foods, and reviewed AI estimates.',
+                'Food logging, checklist habits, progress, and reviewed AI estimates in one free local app.',
             icon: Icons.bolt_rounded,
           ),
           const SizedBox(height: NovaSpacing.lg),
@@ -35,13 +39,42 @@ class ProfileSettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: NovaSpacing.lg),
+          _QuickActionGrid(
+            actions: [
+              _QuickAction(
+                icon: Icons.checklist,
+                label: 'Checklist',
+                color: NovaColors.mint,
+                onTap: () => context.go('/habits'),
+              ),
+              _QuickAction(
+                icon: Icons.search,
+                label: 'Food search',
+                color: NovaColors.blue,
+                onTap: () => context.go(_withMealType('/foods/search')),
+              ),
+              _QuickAction(
+                icon: Icons.bar_chart,
+                label: 'Progress',
+                color: NovaColors.violet,
+                onTap: () => context.go('/analytics'),
+              ),
+              _QuickAction(
+                icon: Icons.monitor_weight_outlined,
+                label: 'Weight',
+                color: NovaColors.lime,
+                onTap: () => context.go('/weight/log'),
+              ),
+            ],
+          ),
+          const SizedBox(height: NovaSpacing.lg),
           NovaCard(
             child: Column(
               children: [
                 _SettingsTile(
                   icon: Icons.person_outline,
                   title: 'Account',
-                  subtitle: 'Email, profile, login, and secure token session',
+                  subtitle: user?.email ?? 'Signed in',
                   onTap: () => _showSettingsSheet(
                     context,
                     title: 'Account',
@@ -68,6 +101,14 @@ class ProfileSettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 _SettingsTile(
+                  icon: Icons.checklist,
+                  title: 'Checklist',
+                  subtitle: habits.isEmpty
+                      ? 'Create and check daily habits'
+                      : '${habits.where((habit) => habit.isCompleted).length}/${habits.length} complete today',
+                  onTap: () => context.go('/habits'),
+                ),
+                _SettingsTile(
                   icon: Icons.straighten,
                   title: 'Units',
                   subtitle:
@@ -87,50 +128,81 @@ class ProfileSettingsScreen extends ConsumerWidget {
                 _SettingsTile(
                   icon: Icons.track_changes,
                   title: 'Nutrition targets',
-                  subtitle:
-                      'Calories, protein, carbs, fat, water, and goal progress',
+                  subtitle: dashboard == null
+                      ? 'Calories, protein, carbs, fat, water, and progress'
+                      : '${dashboard.targetCalories.toStringAsFixed(0)} kcal target',
                   onTap: () => _showSettingsSheet(
                     context,
                     title: 'Nutrition targets',
-                    subtitle:
-                        'Targets use local defaults and profile data where available.',
-                    children: const [
-                      _InfoRow('Calories', 'Shown on Dashboard and Diary'),
-                      _InfoRow('Protein', 'Tracked daily and weekly'),
-                      _InfoRow('Carbs and fat', 'Tracked in macro split'),
-                      _InfoRow('Water', 'Connected to checklist water habits'),
-                    ],
-                  ),
-                ),
-                _SettingsTile(
-                  icon: Icons.download_outlined,
-                  title: 'Data export',
-                  subtitle:
-                      'Export meals, habits, body metrics, recipes, and foods',
-                  onTap: () => _showSettingsSheet(
-                    context,
-                    title: 'Data export',
-                    subtitle: 'Local MVP status',
-                    children: const [
-                      Text(
-                        'Your data is stored in the local backend database. CSV/PDF export is not wired yet, but the backend already owns meals, habits, foods, body metrics, and recipes per user.',
+                    subtitle: 'Current daily tracking values',
+                    children: [
+                      _InfoRow(
+                        'Calories',
+                        dashboard == null
+                            ? 'Open Dashboard after logging food'
+                            : '${dashboard.consumedCalories.toStringAsFixed(0)} / ${dashboard.targetCalories.toStringAsFixed(0)} kcal',
+                      ),
+                      _InfoRow(
+                        'Protein',
+                        dashboard == null
+                            ? 'Tracked from food logs'
+                            : '${dashboard.proteinG.toStringAsFixed(0)}g today',
+                      ),
+                      _InfoRow(
+                        'Carbs / Fat',
+                        dashboard == null
+                            ? 'Tracked in Diary and Progress'
+                            : '${dashboard.carbsG.toStringAsFixed(0)}g / ${dashboard.fatG.toStringAsFixed(0)}g today',
+                      ),
+                      _InfoRow(
+                        'Water',
+                        dashboard == null
+                            ? 'Connected to water checklist habits'
+                            : '${dashboard.waterCompleted}/${dashboard.waterTarget} glasses',
+                      ),
+                      const SizedBox(height: NovaSpacing.md),
+                      NovaButton.secondary(
+                        label: 'Open dashboard',
+                        icon: Icons.dashboard_outlined,
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          context.go('/home');
+                        },
                       ),
                     ],
                   ),
                 ),
                 _SettingsTile(
-                  icon: Icons.privacy_tip_outlined,
-                  title: 'Privacy',
-                  subtitle:
-                      'Private custom foods, user-owned logs, and data controls',
+                  icon: Icons.restaurant_menu_outlined,
+                  title: 'Food database',
+                  subtitle: 'Search foods, favorites, recent, and My Foods',
+                  onTap: () => context.go(_withMealType('/foods/search')),
+                ),
+                _SettingsTile(
+                  icon: Icons.phone_iphone,
+                  title: 'Phone/API setup',
+                  subtitle: config.apiBaseUrl,
                   onTap: () => _showSettingsSheet(
                     context,
-                    title: 'Privacy',
-                    subtitle: 'Local development mode',
-                    children: const [
-                      _InfoRow('Custom foods', 'Private to your user account'),
-                      _InfoRow('Meal logs', 'User-owned'),
-                      _InfoRow('Photo scans', 'Review before saving'),
+                    title: 'Phone/API setup',
+                    subtitle: 'Local Mac and phone testing',
+                    children: [
+                      _InfoRow('Current API', config.apiBaseUrl),
+                      _InfoRow(
+                        'Mock mode',
+                        config.mockMode ? 'Enabled' : 'Disabled',
+                      ),
+                      const _InfoRow('iOS simulator', 'http://127.0.0.1:8000'),
+                      const _InfoRow(
+                          'Android emulator', 'http://10.0.2.2:8000'),
+                      const _InfoRow(
+                        'Real phone',
+                        'Use your Mac Wi-Fi IP with port 8000',
+                      ),
+                      const SizedBox(height: NovaSpacing.md),
+                      const Text(
+                        'Keep Mac and phone on the same Wi-Fi. The backend should be running through Docker and bound to 0.0.0.0.',
+                      ),
                     ],
                   ),
                 ),
@@ -154,11 +226,11 @@ class ProfileSettingsScreen extends ConsumerWidget {
                 ),
                 _SettingsTile(
                   icon: Icons.health_and_safety_outlined,
-                  title: 'Health disclaimer',
+                  title: 'Health note',
                   subtitle: 'Wellness tracking only. Not medical diagnosis.',
                   onTap: () => _showSettingsSheet(
                     context,
-                    title: 'Health disclaimer',
+                    title: 'Health note',
                     subtitle: 'Important',
                     children: const [
                       Text(
@@ -184,19 +256,6 @@ class ProfileSettingsScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: config.mockMode,
-                  onChanged: null,
-                  title: const Text('Mock mode'),
-                  subtitle: Text(config.mockMode ? 'Enabled' : 'Disabled'),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.link),
-                  title: const Text('API base URL'),
-                  subtitle: Text(config.apiBaseUrl),
-                ),
               ],
             ),
           ),
@@ -208,6 +267,73 @@ class ProfileSettingsScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _QuickAction {
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+}
+
+class _QuickActionGrid extends StatelessWidget {
+  const _QuickActionGrid({required this.actions});
+
+  final List<_QuickAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      crossAxisSpacing: NovaSpacing.md,
+      mainAxisSpacing: NovaSpacing.md,
+      childAspectRatio: 2.35,
+      children: [
+        for (final action in actions)
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: action.onTap,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: NovaColors.panelRaised,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: NovaColors.border),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(NovaSpacing.md),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: action.color.withValues(alpha: 0.16),
+                      child: Icon(action.icon, color: action.color, size: 19),
+                    ),
+                    const SizedBox(width: NovaSpacing.md),
+                    Expanded(
+                      child: Text(
+                        action.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -311,4 +437,8 @@ void _showSettingsSheet(
       ),
     ),
   );
+}
+
+String _withMealType(String path, {String mealType = 'lunch'}) {
+  return Uri(path: path, queryParameters: {'meal_type': mealType}).toString();
 }
