@@ -425,6 +425,46 @@ def test_quick_text_add_reviewed_item_confirmation(api_client, user, egg_food):
 
 
 @pytest.mark.django_db
+def test_quick_text_add_supports_whey_scoop_example(api_client, user):
+    call_command("seed_popular_foods")
+    api_client.force_authenticate(user=user)
+
+    parse_response = api_client.post(
+        reverse("meal-quick-add-text"),
+        {
+            "text": "1 scoop whey protein",
+            "date": "2026-06-29",
+            "meal_type": "snack",
+        },
+        format="json",
+    )
+
+    assert parse_response.status_code == 200, parse_response.json()
+    parsed_item = parse_response.json()["parsed_items"][0]
+    assert parsed_item["food_name"] == "Whey protein powder"
+    assert parsed_item["quantity_unit"] == "scoop"
+    assert as_decimal(parsed_item["effective_total_grams"]) == Decimal("30.000")
+
+    confirm_response = api_client.post(
+        reverse("meal-quick-add-text-confirm"),
+        {
+            "text": "1 scoop whey protein",
+            "date": "2026-06-29",
+            "meal_type": "snack",
+            "items": [parsed_item],
+        },
+        format="json",
+    )
+
+    assert confirm_response.status_code == 201, confirm_response.json()
+    payload = confirm_response.json()
+    assert payload["meal"]["meal_type"] == "snack"
+    assert payload["items"][0]["food_name"] == "Whey protein powder"
+    assert as_decimal(payload["items"][0]["grams_calculated"]) == Decimal("30.000")
+    assert as_decimal(payload["items"][0]["calories_kcal"]) == Decimal("120.000")
+
+
+@pytest.mark.django_db
 def test_quick_text_add_uncertain_input_requires_review(api_client, user, dal_food):
     api_client.force_authenticate(user=user)
 

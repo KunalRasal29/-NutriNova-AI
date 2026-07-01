@@ -138,7 +138,7 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                   itemCount: items.length,
                 );
               },
-              error: (error, _) => Text(error.toString()),
+              error: (error, _) => Text(friendlyErrorMessage(error)),
               loading: () => const Center(child: CircularProgressIndicator()),
             ),
           ),
@@ -248,14 +248,18 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                       ref.invalidate(todayMealLogsProvider);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Meal item saved')),
+                        SnackBar(
+                          content: Text(
+                            'Added ${_selectedFood!.name} to ${_mealLabel(_mealType)}',
+                          ),
+                        ),
                       );
                       context.go('/meals');
                     } catch (error) {
                       if (!context.mounted) return;
                       setState(() => _saving = false);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(error.toString())),
+                        SnackBar(content: Text(friendlyErrorMessage(error))),
                       );
                     }
                   },

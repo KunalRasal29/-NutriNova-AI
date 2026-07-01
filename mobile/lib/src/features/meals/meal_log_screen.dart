@@ -54,7 +54,7 @@ class MealLogScreen extends ConsumerWidget {
           ),
         ),
         error: (error, _) => ErrorPanel(
-          message: error.toString(),
+          message: friendlyErrorMessage(error),
           onRetry: () => ref.invalidate(todayMealLogsProvider),
         ),
         loading: () => const LoadingList(),
@@ -493,7 +493,7 @@ class _MealSection extends ConsumerWidget {
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
+        SnackBar(content: Text(friendlyErrorMessage(error))),
       );
     }
   }
@@ -533,7 +533,7 @@ class _MealSection extends ConsumerWidget {
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
+        SnackBar(content: Text(friendlyErrorMessage(error))),
       );
     }
   }

@@ -6,6 +6,7 @@ import '../../core/models/app_models.dart';
 import '../../core/repositories/providers.dart';
 import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
+import '../dashboard/dashboard_controller.dart';
 
 class CreateCustomFoodScreen extends ConsumerStatefulWidget {
   const CreateCustomFoodScreen({
@@ -92,7 +93,7 @@ class _CreateCustomFoodScreenState
           const PageIntro(
             title: 'Create custom food',
             subtitle:
-                'Add a private food when search or barcode does not have it.',
+                'Add your own food when search or barcode does not have it.',
             icon: Icons.add_circle_outline,
           ),
           const SizedBox(height: NovaSpacing.md),
@@ -101,8 +102,8 @@ class _CreateCustomFoodScreenState
             runSpacing: NovaSpacing.sm,
             children: [
               NovaBadge(
-                label: 'Private to you',
-                icon: Icons.lock_outline,
+                label: 'Your custom food',
+                icon: Icons.person_outline,
                 color: NovaColors.mint,
               ),
               SourceConfidenceBadges(
@@ -232,48 +233,78 @@ class _CreateCustomFoodScreenState
           ),
           const SizedBox(height: NovaSpacing.lg),
           NovaButton.primary(
-            label: _saving ? 'Saving...' : 'Save custom food',
+            label: _saving
+                ? 'Saving...'
+                : 'Save and add to ${_mealLabel(_mealType)}',
+            icon: Icons.check,
+            onPressed: _saving ? null : () => _saveCustomFood(addToMeal: true),
+          ),
+          const SizedBox(height: NovaSpacing.sm),
+          NovaButton.secondary(
+            label: 'Save only',
             icon: Icons.save_outlined,
-            onPressed: _saving
-                ? null
-                : () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    final validationMessage = _validationMessage();
-                    if (validationMessage != null) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text(validationMessage)),
-                      );
-                      return;
-                    }
-                    setState(() => _saving = true);
-                    try {
-                      final food = await ref
-                          .read(nutritionRepositoryProvider)
-                          .createCustomFood(_payload());
-                      if (!context.mounted) return;
-                      messenger.showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Custom food saved. Choose quantity to log it.'),
-                        ),
-                      );
-                      context.go(
-                        Uri(
-                          path: '/foods/${food.id}',
-                          queryParameters: {'meal_type': _mealType},
-                        ).toString(),
-                      );
-                    } catch (error) {
-                      if (!context.mounted) return;
-                      setState(() => _saving = false);
-                      messenger.showSnackBar(
-                          SnackBar(content: Text(error.toString())));
-                    }
-                  },
+            onPressed: _saving ? null : () => _saveCustomFood(addToMeal: false),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _saveCustomFood({required bool addToMeal}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final validationMessage = _validationMessage();
+    if (validationMessage != null) {
+      messenger.showSnackBar(SnackBar(content: Text(validationMessage)));
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final repo = ref.read(nutritionRepositoryProvider);
+      final food = await repo.createCustomFood(_payload());
+      ref.invalidate(myFoodsProvider);
+      ref.invalidate(foodSearchProvider(_name.text.trim()));
+
+      if (addToMeal) {
+        await repo.addManualFood(
+          foodId: food.id,
+          quantity: 1,
+          unit: 'serving',
+          mealType: _mealType,
+        );
+        ref.invalidate(dashboardProvider);
+        ref.invalidate(todayMealLogsProvider);
+        ref.invalidate(recentFoodsProvider);
+        ref.invalidate(frequentFoodsProvider);
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Saved ${food.name} and added it to ${_mealLabel(_mealType)}',
+            ),
+          ),
+        );
+        context.go('/meals');
+        return;
+      }
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Saved ${food.name} to My Foods')),
+      );
+      context.go(
+        Uri(
+          path: '/foods/${food.id}',
+          queryParameters: {'meal_type': _mealType},
+        ).toString(),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
+    }
   }
 
   Widget _numberField(TextEditingController controller, String label) {
@@ -347,4 +378,13 @@ class _CreateCustomFoodScreenState
     }
     return null;
   }
+}
+
+String _mealLabel(String mealType) {
+  return mealType
+      .replaceAll('_', ' ')
+      .split(' ')
+      .map((part) =>
+          part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
 }

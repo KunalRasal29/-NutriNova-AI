@@ -139,7 +139,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
           onFoodChanged: _refreshFoodState,
         ),
         error: (error, _) => ErrorPanel(
-          message: error.toString(),
+          message: friendlyErrorMessage(error),
           onRetry: () => ref.invalidate(foodSearchProvider(query)),
         ),
         loading: () => const LoadingList(),
@@ -464,7 +464,7 @@ class _FoodHomeSection extends StatelessWidget {
         ],
       ),
       error: (error, _) => ErrorPanel(
-        message: error.toString(),
+        message: friendlyErrorMessage(error),
         onRetry: onFoodChanged,
       ),
       loading: () => const LinearProgressIndicator(minHeight: 3),
@@ -626,7 +626,7 @@ class _FoodAsyncResults extends StatelessWidget {
         onFoodChanged: onFoodChanged,
       ),
       error: (error, _) => ErrorPanel(
-        message: error.toString(),
+        message: friendlyErrorMessage(error),
         onRetry: onFoodChanged,
       ),
       loading: () => const LoadingList(),
@@ -775,29 +775,37 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
             ),
           ),
           const SizedBox(width: NovaSpacing.md),
-          Column(
-            children: [
-              IconButton(
-                tooltip: food.isFavorite ? 'Remove favorite' : 'Add favorite',
-                icon: Icon(
-                  food.isFavorite ? Icons.star : Icons.star_border,
-                  color:
-                      food.isFavorite ? NovaColors.gold : NovaColors.graphite,
+          SizedBox(
+            width: 82,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                IconButton(
+                  tooltip: food.isFavorite ? 'Remove favorite' : 'Add favorite',
+                  icon: Icon(
+                    food.isFavorite ? Icons.star : Icons.star_border,
+                    color:
+                        food.isFavorite ? NovaColors.gold : NovaColors.graphite,
+                  ),
+                  onPressed: _savingFavorite ? null : _toggleFavorite,
                 ),
-                onPressed: _savingFavorite ? null : _toggleFavorite,
-              ),
-              IconButton.filled(
-                tooltip: 'Add one serving',
-                icon: _adding
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.add),
-                onPressed: _adding ? null : _oneTapAdd,
-              ),
-            ],
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(78, 40),
+                  ),
+                  icon: _adding
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add, size: 18),
+                  label: Text(_adding ? 'Adding' : 'Add'),
+                  onPressed: _adding ? null : _oneTapAdd,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -818,14 +826,29 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
           );
       widget.onFoodChanged();
       if (!mounted) return;
+      final serving = hasServing
+          ? (food.defaultServingDescription.trim().isEmpty
+              ? '1 serving'
+              : food.defaultServingDescription.trim())
+          : '100g';
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Added ${food.name} to ${_mealLabel(widget.mealType)}'),
+          content: Text(
+            'Added $serving ${food.name} to ${_mealLabel(widget.mealType)}',
+          ),
+          action: SnackBarAction(
+            label: 'Diary',
+            onPressed: () {
+              if (mounted) context.go('/meals');
+            },
+          ),
         ),
       );
     } catch (error) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     } finally {
       if (mounted) setState(() => _adding = false);
     }
@@ -850,7 +873,9 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
       );
     } catch (error) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     } finally {
       if (mounted) setState(() => _savingFavorite = false);
     }

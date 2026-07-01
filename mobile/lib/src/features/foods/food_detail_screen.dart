@@ -51,7 +51,7 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
       body: foodState.when(
         data: _buildFood,
         error: (error, _) => ErrorPanel(
-          message: error.toString(),
+          message: friendlyErrorMessage(error),
           onRetry: () => ref.invalidate(foodDetailProvider(widget.foodId)),
         ),
         loading: () => const LoadingList(),
@@ -212,14 +212,18 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
                     ref.invalidate(todayMealLogsProvider);
                     if (!mounted) return;
                     messenger.showSnackBar(
-                      const SnackBar(content: Text('Meal item saved')),
+                      SnackBar(
+                        content: Text(
+                          'Added ${food.name} to ${_mealLabel(_mealType)}',
+                        ),
+                      ),
                     );
                     router.go('/meals');
                   } catch (error) {
                     if (!mounted) return;
                     setState(() => _saving = false);
                     messenger.showSnackBar(
-                      SnackBar(content: Text(error.toString())),
+                      SnackBar(content: Text(friendlyErrorMessage(error))),
                     );
                   }
                 },

@@ -18,7 +18,7 @@ class QuickAddScreen extends ConsumerStatefulWidget {
 }
 
 class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
-  final _text = TextEditingController(text: '2 eggs');
+  final _text = TextEditingController();
   late String _mealType;
   Map<String, dynamic>? _result;
   List<Map<String, dynamic>> _reviewItems = [];
@@ -47,6 +47,8 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
             parsedItems,
             result['preview'] as Map<String, dynamic>? ?? const {},
           );
+    final canConfirm = _canConfirmQuickAdd(parsedItems);
+    final hasText = _text.text.trim().isNotEmpty;
 
     return NovaScaffold(
       title: 'Quick add',
@@ -58,10 +60,11 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
             minLines: 2,
             maxLines: 3,
             decoration: const InputDecoration(
-              labelText: 'Describe food',
+              labelText: 'What did you eat?',
               hintText: '2 eggs, 1 banana, 200g cooked rice, 2 chapati',
               prefixIcon: Icon(Icons.flash_on_outlined),
             ),
+            onChanged: (_) => _clearParsedResult(),
           ),
           const SizedBox(height: NovaSpacing.md),
           Wrap(
@@ -74,10 +77,11 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                 '200g cooked rice',
                 '2 chapati',
                 '1 bowl dal',
+                '1 scoop whey protein',
               ])
                 ActionChip(
                   label: Text(example),
-                  onPressed: () => setState(() => _text.text = example),
+                  onPressed: () => _setExample(example),
                 ),
             ],
           ),
@@ -90,7 +94,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
           NovaButton.primary(
             label: _loading ? 'Parsing...' : 'Parse food',
             icon: Icons.auto_awesome,
-            onPressed: _loading
+            onPressed: _loading || !hasText
                 ? null
                 : () async {
                     final messenger = ScaffoldMessenger.of(context);
@@ -120,7 +124,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                       if (mounted) {
                         setState(() => _loading = false);
                         messenger.showSnackBar(
-                          SnackBar(content: Text(error.toString())),
+                          SnackBar(content: Text(friendlyErrorMessage(error))),
                         );
                       }
                     }
@@ -160,15 +164,34 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                   Text(
                     'Protein ${preview['protein_g'] ?? 0}g • Carbs ${preview['carbs_g'] ?? 0}g • Fat ${preview['fat_g'] ?? 0}g',
                   ),
+                  if (_result!['requires_review'] == true) ...[
+                    const SizedBox(height: NovaSpacing.sm),
+                    const Text(
+                      'Tap edit on any uncertain item before confirming.',
+                      style: TextStyle(
+                        color: NovaColors.graphite,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                   const Divider(height: 28),
                   for (var i = 0; i < parsedItems.length; i++)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.restaurant),
+                      leading: Icon(
+                        _itemHasFood(parsedItems[i])
+                            ? Icons.restaurant
+                            : Icons.warning_amber,
+                        color: _itemHasFood(parsedItems[i])
+                            ? null
+                            : NovaColors.gold,
+                      ),
                       title: Text(
                           parsedItems[i]['food_name']?.toString() ?? 'Food'),
                       subtitle: Text(
-                        '${parsedItems[i]['quantity_value']} ${parsedItems[i]['quantity_unit']} • ${parsedItems[i]['effective_total_grams']}g',
+                        '${parsedItems[i]['quantity_value']} ${parsedItems[i]['quantity_unit']}'
+                        ' • ${parsedItems[i]['effective_total_grams']}g'
+                        ' • ${_itemPreviewText(parsedItems[i])}',
                       ),
                       trailing: IconButton(
                         tooltip: 'Edit',
@@ -193,9 +216,11 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
             ),
             const SizedBox(height: NovaSpacing.lg),
             NovaButton.primary(
-              label: _saving ? 'Saving...' : 'Confirm and save',
+              label: _saving
+                  ? 'Saving...'
+                  : 'Confirm and save to ${_mealLabel(_mealType)}',
               icon: Icons.check,
-              onPressed: _saving
+              onPressed: _saving || !canConfirm
                   ? null
                   : () async {
                       setState(() => _saving = true);
@@ -211,7 +236,11 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                         ref.invalidate(todayMealLogsProvider);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Quick add saved')),
+                            SnackBar(
+                              content: Text(
+                                'Quick add saved to ${_mealLabel(_mealType)}',
+                              ),
+                            ),
                           );
                           context.go('/meals');
                         }
@@ -219,16 +248,70 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                         if (context.mounted) {
                           setState(() => _saving = false);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(error.toString())),
+                            SnackBar(
+                              content: Text(friendlyErrorMessage(error)),
+                            ),
                           );
                         }
                       }
                     },
             ),
+            if (!canConfirm) ...[
+              const SizedBox(height: NovaSpacing.sm),
+              const Text(
+                'One or more items needs a food match. Tap edit and choose a match before saving.',
+                style: TextStyle(
+                  color: NovaColors.gold,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ],
         ],
       ),
     );
+  }
+
+  bool _canConfirmQuickAdd(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) return false;
+    return items.every(_itemHasFood);
+  }
+
+  bool _itemHasFood(Map<String, dynamic> item) {
+    return item['food_id']?.toString().trim().isNotEmpty == true;
+  }
+
+  String _itemPreviewText(Map<String, dynamic> item) {
+    final preview = _reviewPreview(
+      [item],
+      item['nutrition_preview'] as Map<String, dynamic>? ?? const {},
+    );
+    final calories = _asDouble(preview['calories_kcal']);
+    final protein = _asDouble(preview['protein_g']);
+    final carbs = _asDouble(preview['carbs_g']);
+    final fat = _asDouble(preview['fat_g']);
+    if (calories <= 0 && protein <= 0 && carbs <= 0 && fat <= 0) {
+      return 'nutrition after save';
+    }
+    return '${calories.toStringAsFixed(0)} kcal'
+        ' • P ${protein.toStringAsFixed(1)}g'
+        ' C ${carbs.toStringAsFixed(1)}g'
+        ' F ${fat.toStringAsFixed(1)}g';
+  }
+
+  void _setExample(String example) {
+    setState(() {
+      _text.text = example;
+      _result = null;
+      _reviewItems = [];
+    });
+  }
+
+  void _clearParsedResult() {
+    setState(() {
+      _result = null;
+      _reviewItems = [];
+    });
   }
 
   Map<String, dynamic> _withPreviewBaseGrams(Map<String, dynamic> item) {
@@ -443,4 +526,13 @@ double _asDouble(Object? value, {double fallback = 0}) {
   if (value is num) return value.toDouble();
   if (value is String) return double.tryParse(value) ?? fallback;
   return fallback;
+}
+
+String _mealLabel(String mealType) {
+  return mealType
+      .replaceAll('_', ' ')
+      .split(' ')
+      .map((part) =>
+          part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
 }

@@ -642,6 +642,24 @@ class NovaButton extends StatelessWidget {
   }
 }
 
+String friendlyErrorMessage(Object error) {
+  final raw = error.toString().trim();
+  var message = raw
+      .replaceFirst(RegExp(r'^ApiException:\s*'), '')
+      .replaceFirst(RegExp(r'^Exception:\s*'), '');
+  if (message.contains('XMLHttpRequest') ||
+      message.toLowerCase().contains('connection errored')) {
+    return 'Could not reach the backend. Check that Docker is running, then try again.';
+  }
+  if (message.toLowerCase().contains('socketexception')) {
+    return 'Network connection failed. Check the API base URL and Wi-Fi.';
+  }
+  if (message.isEmpty) {
+    return 'Something went wrong. Please try again.';
+  }
+  return message;
+}
+
 class MealTypeSelector extends StatelessWidget {
   const MealTypeSelector({
     required this.value,
