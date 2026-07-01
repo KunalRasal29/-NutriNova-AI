@@ -327,6 +327,20 @@ def upsert_food_aliases(food, aliases: Iterable[str], language_code="en"):
         )
 
 
+def replace_food_aliases(food, aliases: Iterable[str], language_code="en"):
+    cleaned_aliases = {
+        str(alias or "").strip()
+        for alias in aliases
+        if str(alias or "").strip()
+    }
+    queryset = FoodAlias.objects.filter(food=food, language_code=language_code or "en")
+    if cleaned_aliases:
+        queryset.exclude(alias__in=cleaned_aliases).delete()
+    else:
+        queryset.delete()
+    upsert_food_aliases(food, cleaned_aliases, language_code)
+
+
 def upsert_food_nutrients(
     food,
     source,
@@ -400,9 +414,18 @@ def import_json_food_records(records: list[dict], source, *, default_food_type):
                         grams=food.default_serving_g,
                         is_default=True,
                     )
-                upsert_food_aliases(
-                    food, record.get("aliases", []), record.get("language_code", "en")
-                )
+                if parse_bool(record.get("replace_aliases")):
+                    replace_food_aliases(
+                        food,
+                        record.get("aliases", []),
+                        record.get("language_code", "en"),
+                    )
+                else:
+                    upsert_food_aliases(
+                        food,
+                        record.get("aliases", []),
+                        record.get("language_code", "en"),
+                    )
                 upsert_food_nutrients(
                     food,
                     source,

@@ -230,6 +230,8 @@ class FoodSearchResultSerializer(serializers.ModelSerializer):
         if obj.source.source_type == "AI_ESTIMATE":
             return "ai_estimate"
         if obj.verified:
+            if obj.source.source_type == "MANUAL_ADMIN_SAMPLE":
+                return "trusted_seeded"
             return "official_verified"
         return "official_unverified"
 
@@ -319,6 +321,8 @@ class FoodDetailSerializer(serializers.ModelSerializer):
         if obj.source.source_type == "AI_ESTIMATE":
             return "ai_estimate"
         if obj.verified:
+            if obj.source.source_type == "MANUAL_ADMIN_SAMPLE":
+                return "trusted_seeded"
             return "official_verified"
         return "official_unverified"
 

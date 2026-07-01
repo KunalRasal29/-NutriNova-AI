@@ -92,6 +92,8 @@ class MealLogItemSerializer(serializers.ModelSerializer):
         if obj.food.source.source_type == "AI_ESTIMATE":
             return "ai_estimate"
         if obj.food.verified:
+            if obj.food.source.source_type == "MANUAL_ADMIN_SAMPLE":
+                return "trusted_seeded"
             return "official_verified"
         return "official_unverified"
 

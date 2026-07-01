@@ -800,11 +800,19 @@ class SourceConfidenceBadges extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isTrustedSeed = classification == 'trusted_seeded';
     final label = classification == 'user_custom'
         ? 'USER_CUSTOM'
-        : source.isEmpty
-            ? 'Source pending'
-            : source;
+        : isTrustedSeed
+            ? 'Local database'
+            : source.isEmpty
+                ? 'Source pending'
+                : source;
+    final trustLabel = isTrustedSeed
+        ? 'Trusted'
+        : verified
+            ? 'Verified'
+            : 'Unverified';
     return Wrap(
       spacing: NovaSpacing.xs,
       runSpacing: NovaSpacing.xs,
@@ -813,7 +821,9 @@ class SourceConfidenceBadges extends StatelessWidget {
           label: label,
           icon: classification == 'user_custom'
               ? Icons.person_outline
-              : Icons.dataset_outlined,
+              : isTrustedSeed
+                  ? Icons.library_books_outlined
+                  : Icons.dataset_outlined,
           color: classification == 'ai_estimate'
               ? NovaColors.gold
               : classification == 'user_custom'
@@ -828,7 +838,7 @@ class SourceConfidenceBadges extends StatelessWidget {
           color: confidence >= 0.8 ? NovaColors.mint : NovaColors.gold,
         ),
         NovaBadge(
-          label: verified ? 'Verified' : 'Unverified',
+          label: trustLabel,
           icon: verified ? Icons.verified_outlined : Icons.warning_amber,
           color: verified ? NovaColors.mint : NovaColors.gold,
         ),

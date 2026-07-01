@@ -7,6 +7,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from foods.models import FavoriteFood, Food, FoodDataImportJob, FoodNutrient, FoodServing
+from meals.services.manual_add import manual_food_preview
 from nutrition.models import Nutrient, NutritionDataSource
 
 User = get_user_model()
@@ -349,7 +350,10 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
     call_command("seed_popular_foods")
 
     source = NutritionDataSource.objects.get(name="Manual Admin Sample")
-    assert Food.objects.filter(source=source).count() >= 245
+    assert Food.objects.filter(source=source).count() >= 360
+    assert Food.objects.filter(source=source, verified=True).count() >= 250
+    assert Food.objects.filter(source=source).exclude(barcode="").count() >= 20
+    assert Food.objects.filter(source=source, servings__isnull=False).distinct().count() >= 360
 
     chicken_curry = Food.objects.get(source=source, canonical_name="Chicken curry")
     assert chicken_curry.servings.get(is_default=True).grams == Decimal("220.00")
@@ -362,6 +366,9 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
     assert Food.objects.filter(source=source, aliases__alias="besan chilla").exists()
     assert Food.objects.filter(source=source, aliases__alias="protein shake").exists()
     assert Food.objects.filter(source=source, aliases__alias="bhindi").exists()
+    assert Food.objects.filter(source=source, aliases__alias="amrood").exists()
+    assert Food.objects.filter(source=source, aliases__alias="muscleblaze whey").exists()
+    assert Food.objects.filter(source=source, aliases__alias="nimbu pani no sugar").exists()
     assert Food.objects.filter(source=source, aliases__alias="maggi").exists()
     assert Food.objects.filter(source=source, aliases__alias="coke").exists()
     assert Food.objects.filter(
@@ -380,15 +387,24 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
     response = api_client.get(reverse("food-search"), {"q": "chapati"})
     assert response.status_code == 200
     assert response.json()["results"][0]["name"] == "Chapati, whole wheat"
+    assert response.json()["results"][0]["data_classification"] == "trusted_seeded"
 
     response = api_client.get(reverse("food-search"), {"q": "protein shake"})
     assert response.status_code == 200
     names = {result["name"] for result in response.json()["results"]}
     assert "Protein shake with milk" in names
 
+    response = api_client.get(reverse("food-search"), {"q": "chicken breast"})
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "Chicken breast, cooked skinless"
+
     response = api_client.get(reverse("food-search"), {"q": "bhindi"})
     assert response.status_code == 200
     assert response.json()["results"][0]["name"] == "Okra, cooked"
+
+    response = api_client.get(reverse("food-search"), {"q": "amrood"})
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "Guava"
 
     response = api_client.get(reverse("food-search"), {"q": "maggi"})
     assert response.status_code == 200
@@ -397,6 +413,55 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
     response = api_client.get(reverse("food-search"), {"q": "coke"})
     assert response.status_code == 200
     assert response.json()["results"][0]["name"] == "Coca-Cola Original Taste"
+
+    response = api_client.get(reverse("food-search"), {"barcode": "8991200000344"})
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "MuscleBlaze Whey Protein Chocolate"
+
+
+@pytest.mark.django_db
+def test_popular_food_seed_supports_common_macro_examples():
+    call_command("seed_popular_foods")
+    source = NutritionDataSource.objects.get(name="Manual Admin Sample")
+
+    def preview(food_name, quantity, unit):
+        food = (
+            Food.objects.filter(source=source, canonical_name=food_name)
+            .prefetch_related("servings", "nutrients__nutrient", "nutrients__source")
+            .get()
+        )
+        return manual_food_preview(
+            food=food,
+            quantity_value=Decimal(quantity),
+            quantity_unit=unit,
+        )
+
+    chicken = preview("Chicken breast, cooked skinless", "500", "gram")
+    assert chicken["calories_kcal"] == Decimal("825.000")
+    assert Decimal(chicken["protein_g"]) == Decimal("155.000")
+    assert Decimal(chicken["carbs_g"]) == Decimal("0.000")
+    assert Decimal(chicken["fat_g"]) == Decimal("18.000")
+
+    eggs = preview("Boiled egg, whole", "2", "egg")
+    assert eggs["effective_total_grams"] == Decimal("100.000")
+    assert eggs["calories_kcal"] == Decimal("155.000")
+    assert Decimal(eggs["protein_g"]) == Decimal("12.600")
+    assert Decimal(eggs["carbs_g"]) == Decimal("1.100")
+
+    rice = preview("Cooked white rice", "200", "gram")
+    assert rice["calories_kcal"] == Decimal("260.000")
+    assert Decimal(rice["carbs_g"]) == Decimal("56.400")
+
+    chapati = preview("Chapati, whole wheat", "2", "piece")
+    assert chapati["effective_total_grams"] == Decimal("80.000")
+    assert chapati["calories_kcal"] == Decimal("208.000")
+    assert Decimal(chapati["protein_g"]) == Decimal("6.960")
+    assert Decimal(chapati["carbs_g"]) == Decimal("37.120")
+
+    whey = preview("Whey protein powder", "1", "scoop")
+    assert whey["effective_total_grams"] == Decimal("30.000")
+    assert whey["calories_kcal"] == Decimal("120.000")
+    assert Decimal(whey["protein_g"]) == Decimal("24.000")
 
 
 @pytest.mark.django_db
