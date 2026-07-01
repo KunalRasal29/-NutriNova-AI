@@ -36,8 +36,14 @@ class AuthController extends StateNotifier<AsyncValue<UserProfile?>> {
   }
 
   Future<void> completeOnboarding(Map<String, dynamic> payload) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _repository.updateProfile(payload));
+    final currentUser = state.valueOrNull;
+    if (currentUser == null) {
+      state = const AsyncValue.loading();
+      state = await AsyncValue.guard(() => _repository.updateProfile(payload));
+      return;
+    }
+    final updatedUser = await _repository.updateProfile(payload);
+    state = AsyncValue.data(updatedUser);
   }
 
   Future<void> logout() async {

@@ -92,7 +92,8 @@ class ProfileSettingsScreen extends ConsumerWidget {
                   onTap: () => _showSettingsSheet(
                     context,
                     title: 'Nutrition targets',
-                    subtitle: 'Targets are calculated from your profile.',
+                    subtitle:
+                        'Targets use local defaults and profile data where available.',
                     children: const [
                       _InfoRow('Calories', 'Shown on Dashboard and Diary'),
                       _InfoRow('Protein', 'Tracked daily and weekly'),

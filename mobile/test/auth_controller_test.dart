@@ -5,6 +5,7 @@ import 'package:nutrinova_ai/src/features/auth/auth_controller.dart';
 
 class FakeAuthRepository implements AuthRepository {
   UserProfile? user;
+  bool failProfileUpdate = false;
 
   @override
   Future<UserProfile?> currentUser() async => user;
@@ -41,6 +42,9 @@ class FakeAuthRepository implements AuthRepository {
 
   @override
   Future<UserProfile> updateProfile(Map<String, dynamic> payload) async {
+    if (failProfileUpdate) {
+      throw Exception('profile save failed');
+    }
     user = UserProfile(
       id: user?.id ?? '1',
       email: user?.email ?? 'test@example.com',
@@ -64,5 +68,27 @@ void main() {
     await controller.logout();
 
     expect(controller.state.value, isNull);
+  });
+
+  test('auth controller preserves signed-in user when onboarding save fails',
+      () async {
+    final repository = FakeAuthRepository();
+    final controller = AuthController(repository);
+
+    await controller.register('test@example.com', 'password', 'Tester');
+    repository.failProfileUpdate = true;
+
+    await expectLater(
+      controller.completeOnboarding({
+        'display_name': 'Tester',
+        'height_cm': '175',
+        'weight_kg': '73',
+        'has_completed_onboarding': true,
+      }),
+      throwsException,
+    );
+
+    expect(controller.state.value?.email, 'test@example.com');
+    expect(controller.state.value?.hasCompletedOnboarding, isFalse);
   });
 }

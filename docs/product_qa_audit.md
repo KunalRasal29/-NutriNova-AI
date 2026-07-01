@@ -9,13 +9,14 @@ Scope: Phase 11 full product QA audit and obvious P0/P1 fixes.
 - Inspected backend URL routing, serializers, models, services, seed/import commands, photo analysis provider, and test coverage.
 - Inspected Flutter routes, repositories, API client, auth, dashboard, diary, food search, custom food, quick add, barcode, photo scan/review, checklist, progress, settings, and global add sheet.
 - Verified backend health locally.
+- Ran backend API smoke checks for register, onboarding profile update, food search, manual add, quick add parse, custom habit creation, today's habit grid, photo upload, and eager mock photo review.
 - Did not open the browser, per instruction.
 
 ## Current Local Data Facts
 
 - Foods in local database: 275
 - Verified foods: 0
-- Branded foods: 28
+- Branded foods: 27
 - Barcoded foods: 10
 - User custom foods in local DB at audit time: 0
 - Nutrition sources configured: USDA FoodData Central, IFCT 2017, Indian Nutrient Databank, Open Food Facts, Manual Admin Sample, User Custom, AI Estimate.
@@ -96,44 +97,65 @@ Scope: Phase 11 full product QA audit and obvious P0/P1 fixes.
 - Account sheet includes sign out.
 - API base URL and mock mode status are visible.
 
-## Fixed During Phase 11
+## Phase 11 Smoke Test Results
 
-### P1: Photo Upload Was Path-Based
+- `docker compose ps`: backend, Postgres, Redis, MinIO, Celery worker, and Celery beat were running.
+- `GET /api/health/`: passed with database `ok`.
+- API smoke pass:
+  - register: `201`
+  - onboarding profile update: `200`
+  - food search for `chicken breast`: `200`, 25 results
+  - manual add: `201`
+  - quick add parse for `2 eggs`: `200`
+  - habit create: `201`
+  - today's habits: `200`
+- Photo smoke pass:
+  - upload valid PNG: `201`
+  - eager mock analysis review: `200`, 1 detected item
+- Browser/UI was not opened.
+
+## Fixed During This Phase 11 Pass
+
+### P1: Onboarding Failure Could Bounce User Back To Login
 
 Problem:
-Flutter web and some device flows can expose picked photos as browser/blob paths that are not reliable for `MultipartFile.fromFile`.
+If profile setup failed after registration, the auth controller could replace the signed-in user state with an error. Because routing treats no current user as logged out, that could send the user away from onboarding instead of showing a clear setup error.
 
 Fix:
-Photo upload now uses `XFile.readAsBytes()` and byte-based multipart upload. The preview also uses `Image.memory`, avoiding fragile `dart:io` file preview behavior.
+Onboarding now keeps the signed-in user state during profile-save errors, shows a local error banner, and keeps the user on the setup screen. A regression test covers this.
 
 Files:
-- `mobile/lib/src/core/api/api_client.dart`
-- `mobile/lib/src/core/repositories/nutrition_repository.dart`
-- `mobile/lib/src/features/photos/photo_scan_screen.dart`
+- `mobile/lib/src/features/auth/auth_controller.dart`
+- `mobile/lib/src/features/onboarding/onboarding_screen.dart`
+- `mobile/test/auth_controller_test.dart`
 
-### P1: Global Add Sheet Weight Action Did Not Log Weight
-
-Problem:
-The global add sheet showed a Weight action, but it only routed to Progress and did not open a weight entry flow.
-
-Fix:
-Added a real Log Weight screen and routed the global Weight action to it.
-
-Files:
-- `mobile/lib/src/features/body/log_weight_screen.dart`
-- `mobile/lib/src/router/app_router.dart`
-- `mobile/lib/src/core/widgets/nova_widgets.dart`
-
-### P2: Dashboard Notification Button Was a No-Op
+### P2: Photo Scan Copy Over-Promised AI Accuracy
 
 Problem:
-The notification icon did nothing, making the app feel broken.
+The screen title said `AI meal scan`, but the local provider is mock by default and real AI photo transport is not enabled.
 
 Fix:
-Added a simple notifications sheet that explains no reminders are scheduled yet.
+Changed the screen title to `Meal photo review` so the UI still supports the flow without implying production AI accuracy.
 
 File:
-- `mobile/lib/src/features/dashboard/home_dashboard_screen.dart`
+- `mobile/lib/src/features/photos/photo_scan_screen.dart`
+
+### P2: Nutrition Target Settings Copy Was Too Strong
+
+Problem:
+Settings said targets are calculated from the profile, but target generation is still not fully personalized.
+
+Fix:
+Changed the settings sheet copy to say targets use local defaults and profile data where available.
+
+File:
+- `mobile/lib/src/features/profile/profile_settings_screen.dart`
+
+## Previously Verified Fixes Already Present
+
+- Photo upload uses `XFile.readAsBytes()` and byte-based multipart upload, avoiding fragile path-only upload behavior.
+- The global add sheet has a real Log Weight route.
+- The dashboard notification button opens an explanatory sheet instead of doing nothing.
 
 ## Priority Issues
 
@@ -144,6 +166,7 @@ No confirmed P0 blockers found during code/API audit.
 Residual risk:
 - Real iPhone/Android camera and barcode behavior still needs physical-device QA.
 - A changed Mac Wi-Fi IP can still break real-phone API access until `.env` and the Flutter `API_BASE_URL` are updated.
+- Full UI interaction smoothness still needs physical-phone testing; this audit used code review and backend smoke tests, not browser automation or a device session.
 
 ### P1 Blocks Demo Quality
 
@@ -174,6 +197,10 @@ Residual risk:
 
 7. Data export is not implemented.
    - Settings honestly says export is not wired yet.
+
+8. Async photo review can initially show `uploaded` with zero items.
+   - The Flutter upload path polls review after upload, and the review screen has processing states.
+   - Real-device timing still needs testing with Celery worker latency.
 
 ### P2 Hurts Smoothness Or Trust
 
@@ -213,6 +240,10 @@ Residual risk:
    - iOS simulator, Android emulator, and real phone URLs are documented.
    - The app cannot auto-discover the Mac backend IP.
 
+9. Photo analysis deletion can race with async detected-food creation.
+   - This surfaced during smoke-test cleanup when the worker created detected foods while cleanup was deleting the analysis.
+   - It does not block current user flows, but admin/data-retention cleanup needs a safer task-aware approach.
+
 ### P3 Polish
 
 1. App naming is still mixed between LaPulgaFit and NutriNova AI in repo/docs/history.
@@ -238,7 +269,7 @@ Residual risk:
 | Quick add | Works | Good for simple examples; must remain review-based. |
 | Custom food | Works | User-entered accuracy only; no label OCR/validation. |
 | Barcode | Partially works | Scanner and manual entry work; product coverage is small. |
-| Photo meal scan | Flow works | Accuracy is not production-grade because provider is mock. |
+| Photo meal scan | Flow works | Upload/review works; accuracy is not production-grade because provider is mock. |
 | Checklist/habits | Works | Custom and template add work. Editing/archive/reminders missing. |
 | Progress | Works | Useful with data; still basic versus premium apps. |
 | Settings/profile | Works | Rows open sheets. Some features are informational only. |
@@ -246,7 +277,7 @@ Residual risk:
 
 ## What Feels Confusing
 
-- "AI meal scan" can imply production AI accuracy, but current local provider is mock.
+- Photo scanning can imply production AI accuracy unless the review/disclaimer is kept visible; current local provider is mock.
 - Barcode scan can look broken when real products are missing from the small local database.
 - Exercise is shown in calorie math but cannot be logged.
 - Nutrition targets look authoritative but are not fully calculated from onboarding yet.
@@ -299,11 +330,11 @@ Residual risk:
 
 ## Updated Readiness
 
-- Runnable MVP: 80%
-- Demo-quality app: 70%
-- Smooth premium nutrition app: 50%
+- Runnable MVP: 82%
+- Demo-quality app: 72%
+- Smooth premium nutrition app: 52%
 - Food database quality: 45%
-- Camera/AI meal accuracy: 20%
+- Camera/AI meal accuracy: 22%
 - Macro accuracy for seeded/common foods: 65%
 - Macro accuracy across real-world foods: 40%
 

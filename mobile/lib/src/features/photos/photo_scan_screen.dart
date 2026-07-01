@@ -27,7 +27,7 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
   @override
   Widget build(BuildContext context) {
     return NovaScaffold(
-      title: 'AI meal scan',
+      title: 'Meal photo review',
       body: ListView(
         padding: const EdgeInsets.all(NovaSpacing.lg),
         children: [

@@ -20,6 +20,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   String _diet = 'non_vegetarian';
   String _activity = 'moderate';
   bool _acceptedHealthDisclaimer = false;
+  bool _saving = false;
+  String _errorMessage = '';
 
   @override
   void dispose() {
@@ -144,27 +146,42 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 setState(() => _activity = value ?? _activity),
           ),
           const SizedBox(height: NovaSpacing.xl),
+          if (_errorMessage.isNotEmpty) ...[
+            ErrorBanner(message: _errorMessage),
+            const SizedBox(height: NovaSpacing.md),
+          ],
           NovaButton.primary(
-            label: 'Finish setup',
+            label: _saving ? 'Saving...' : 'Finish setup',
             icon: Icons.check,
-            onPressed: _acceptedHealthDisclaimer
-                ? () {
-                    ref
-                        .read(authControllerProvider.notifier)
-                        .completeOnboarding({
-                      'display_name': _displayName.text.trim(),
-                      'height_cm': _height.text,
-                      'weight_kg': _weight.text,
-                      'goal_type': _goalType,
-                      'dietary_preference': _diet,
-                      'activity_level': _activity,
-                      'has_completed_onboarding': true,
-                    });
-                  }
-                : null,
+            onPressed:
+                _acceptedHealthDisclaimer && !_saving ? _finishSetup : null,
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _finishSetup() async {
+    setState(() {
+      _saving = true;
+      _errorMessage = '';
+    });
+    try {
+      await ref.read(authControllerProvider.notifier).completeOnboarding({
+        'display_name': _displayName.text.trim(),
+        'height_cm': _height.text,
+        'weight_kg': _weight.text,
+        'goal_type': _goalType,
+        'dietary_preference': _diet,
+        'activity_level': _activity,
+        'has_completed_onboarding': true,
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _errorMessage = error.toString();
+      });
+    }
   }
 }
