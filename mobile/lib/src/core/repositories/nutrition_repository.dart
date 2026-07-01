@@ -52,6 +52,14 @@ abstract class NutritionRepository {
     required String mealType,
   });
   Future<List<HabitGridItem>> todayHabits();
+  Future<List<HabitTemplateSummary>> habitTemplates();
+  Future<void> createHabitFromTemplate(String templateId);
+  Future<void> createHabit({
+    required String title,
+    required int targetCount,
+    required String unit,
+    required String category,
+  });
   Future<void> checkHabit(String habitId, int completedCount);
   Future<void> uncheckHabit(String habitId);
   Future<Map<String, dynamic>> monthHabitGrid(String month);
@@ -382,6 +390,51 @@ class ApiNutritionRepository implements NutritionRepository {
   }
 
   @override
+  Future<List<HabitTemplateSummary>> habitTemplates() async {
+    final response = await _apiClient.get('/api/habits/templates/');
+    final data = _extractList(response.data);
+    return data
+        .map((item) =>
+            HabitTemplateSummary.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<void> createHabitFromTemplate(String templateId) async {
+    await _apiClient.post(
+      '/api/habits/create-from-template/',
+      data: {
+        'template_id': templateId,
+        'start_date': _dateString(DateTime.now()),
+      },
+    );
+  }
+
+  @override
+  Future<void> createHabit({
+    required String title,
+    required int targetCount,
+    required String unit,
+    required String category,
+  }) async {
+    await _apiClient.post(
+      '/api/habits/',
+      data: {
+        'title': title,
+        'category': category,
+        'recurrence': 'daily',
+        'recurrence_type': 'daily',
+        'start_date': _dateString(DateTime.now()),
+        'target_count': targetCount,
+        'unit': unit,
+        'icon': _habitIconForCategory(category),
+        'color': _habitColorForCategory(category),
+        'is_active': true,
+      },
+    );
+  }
+
+  @override
   Future<void> checkHabit(String habitId, int completedCount) async {
     await _apiClient.post(
       '/api/habits/$habitId/check/',
@@ -557,6 +610,30 @@ String _mealItemUnit(String unit) {
     return 'serving';
   }
   return unit;
+}
+
+String _habitIconForCategory(String category) {
+  return switch (category) {
+    'water' => 'droplets',
+    'nutrition' => 'utensils',
+    'workout' => 'dumbbell',
+    'sleep' => 'moon',
+    'study' => 'book',
+    'productivity' => 'check',
+    _ => 'check',
+  };
+}
+
+String _habitColorForCategory(String category) {
+  return switch (category) {
+    'water' => '#0EA5E9',
+    'nutrition' => '#22C55E',
+    'workout' => '#F97316',
+    'sleep' => '#8B5CF6',
+    'study' => '#3B82F6',
+    'productivity' => '#FACC15',
+    _ => '#22C55E',
+  };
 }
 
 String _dashboardInsight({
@@ -1209,6 +1286,59 @@ class MockNutritionRepository implements NutritionRepository {
 
   @override
   Future<List<HabitGridItem>> todayHabits() async => (await dashboard()).habits;
+
+  @override
+  Future<List<HabitTemplateSummary>> habitTemplates() async {
+    return const [
+      HabitTemplateSummary(
+        id: 'water-template',
+        title: 'Drink 8 glasses water',
+        description: 'Track your daily water intake.',
+        category: 'water',
+        defaultTargetCount: 8,
+        unit: 'glasses',
+        icon: 'droplets',
+      ),
+      HabitTemplateSummary(
+        id: 'meals-template',
+        title: 'Log all meals',
+        description: 'Keep breakfast, lunch, dinner, and snacks complete.',
+        category: 'nutrition',
+        defaultTargetCount: 1,
+        unit: 'checkbox',
+        icon: 'utensils',
+      ),
+      HabitTemplateSummary(
+        id: 'steps-template',
+        title: 'Walk 8,000 steps',
+        description: 'Build an active daily baseline.',
+        category: 'workout',
+        defaultTargetCount: 8000,
+        unit: 'steps',
+        icon: 'footprints',
+      ),
+      HabitTemplateSummary(
+        id: 'workout-template',
+        title: 'Workout',
+        description: 'Complete your planned workout.',
+        category: 'workout',
+        defaultTargetCount: 1,
+        unit: 'checkbox',
+        icon: 'dumbbell',
+      ),
+    ];
+  }
+
+  @override
+  Future<void> createHabitFromTemplate(String templateId) async {}
+
+  @override
+  Future<void> createHabit({
+    required String title,
+    required int targetCount,
+    required String unit,
+    required String category,
+  }) async {}
 
   @override
   Future<void> checkHabit(String habitId, int completedCount) async {}

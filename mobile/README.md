@@ -74,6 +74,18 @@ cd /Users/kunalrasal/Documents/LaPulgaFit
 ipconfig getifaddr en0
 ```
 
+If that fails on your Mac, run:
+
+```bash
+ifconfig en0
+```
+
+Use the `inet` IPv4 address. On Kunal's current Mac network this is:
+
+```text
+172.20.10.3
+```
+
 Add that IP to `DJANGO_ALLOWED_HOSTS` in `.env`, restart the backend, then run:
 
 ```bash
@@ -84,7 +96,14 @@ flutter run \
   --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
 ```
 
-Backend and MinIO bind to `0.0.0.0` through Docker Compose. Your real phone and Mac must be on the same Wi-Fi, and phone photo previews also need port `9000` reachable for local MinIO images.
+Current Kunal Mac network example:
+
+```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter run --dart-define=API_BASE_URL=http://172.20.10.3:8000
+```
+
+Backend and MinIO bind to `0.0.0.0` through Docker Compose. Your real phone and Mac must be on the same Wi-Fi, and phone photo previews also need port `9000` reachable for local MinIO images. Real phones cannot use `localhost` for the Mac backend.
 
 Open backend checks:
 
@@ -100,6 +119,7 @@ Native iOS/Android builds do not need CORS. Flutter web does.
 - iOS simulator: `http://localhost:8000`
 - Android emulator: `http://10.0.2.2:8000`
 - Physical iPhone/Android phone: `http://YOUR_MAC_LAN_IP:8000`
+- Physical phone on Kunal's current network: `http://172.20.10.3:8000`
 - Production later: your HTTPS API domain
 
 For a physical phone, keep the phone and Mac on the same Wi-Fi, start Docker on the Mac, and use `ipconfig getifaddr en0` to find the LAN IP.
@@ -110,6 +130,8 @@ The app uses camera/gallery for meal photos and camera access for barcode scan. 
 
 - iOS: Simulator or device Settings -> Privacy & Security -> Camera/Photos -> allow NutriNova AI.
 - Android: Settings -> Apps -> NutriNova AI -> Permissions -> allow Camera and Photos.
+- Barcode scan needs Camera permission.
+- Meal photo scan can use Camera or Gallery. Gallery is the fastest real-phone smoke test.
 - If platform folders were regenerated, confirm `image_picker` and `mobile_scanner` permissions are present in the generated iOS/Android project files.
 
 ### Common macOS Phone Testing Issues
@@ -119,6 +141,23 @@ The app uses camera/gallery for meal photos and camera access for barcode scan. 
 - Photo preview image does not load: run `make ensure-local-storage` from the repo root and confirm port `9000` is reachable.
 - Camera opens black: check simulator/device camera permissions and try a physical device for barcode scanning.
 - Android emulator cannot connect: use `10.0.2.2`, not `127.0.0.1`.
+
+### Real Phone MVP QA Checklist
+
+Run this on the phone before demo:
+
+1. Register a new account.
+2. Login with the account.
+3. Complete onboarding.
+4. Open Dashboard and confirm it loads without red errors.
+5. Open Diary and add food from search.
+6. Edit and delete one logged food.
+7. Use Text add with `2 eggs` and confirm it saves.
+8. Open Barcode, try sample barcode `8900000000011`, and log it.
+9. Open Meal scan, choose Gallery, upload a meal image, review, and confirm.
+10. Add a checklist item, tick it, and confirm Dashboard/Progress refresh.
+11. Open Progress and Settings.
+12. Logout and login again.
 
 ## Connected Core Flows
 

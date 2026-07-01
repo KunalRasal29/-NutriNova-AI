@@ -124,6 +124,18 @@ cd /Users/kunalrasal/Documents/LaPulgaFit
 ipconfig getifaddr en0
 ```
 
+If that command fails, use:
+
+```bash
+ifconfig en0
+```
+
+Look for the `inet` IPv4 address. On Kunal's current Mac session this is:
+
+```text
+172.20.10.3
+```
+
 Add that IP to `DJANGO_ALLOWED_HOSTS` in `.env`, then restart the backend:
 
 ```bash
@@ -137,6 +149,13 @@ cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
 flutter run --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
 ```
 
+For Kunal's current Mac network:
+
+```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter run --dart-define=API_BASE_URL=http://172.20.10.3:8000
+```
+
 Backend and MinIO already bind to `0.0.0.0` through Docker Compose. The phone and Mac must be on the same Wi-Fi. Native iOS/Android builds do not need CORS, but Flutter web does.
 
 API base URL quick map:
@@ -144,7 +163,16 @@ API base URL quick map:
 - iOS simulator: `http://localhost:8000`
 - Android emulator: `http://10.0.2.2:8000`
 - Real phone: `http://YOUR_MAC_LAN_IP:8000`
+- Real phone on Kunal's current network: `http://172.20.10.3:8000`
 - Production later: your HTTPS API domain
+
+Phone permission checklist:
+
+- iPhone: allow Camera and Photos when prompted, or enable them in Settings.
+- Android: allow Camera and Photos/Images in app permissions.
+- Barcode scan requires Camera.
+- Meal photo scan works with Camera or Gallery. Gallery is the fastest smoke test.
+- Real phones cannot use `localhost` for the Mac backend; use the Mac LAN IP.
 
 ## Nutrition Import Commands
 

@@ -7,7 +7,7 @@
         android:maxSdkVersion="32" />
 
     <application
-        android:label="nutrinova_ai"
+        android:label="NutriNova AI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

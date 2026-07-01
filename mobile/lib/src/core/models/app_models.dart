@@ -509,6 +509,38 @@ class HabitGridItem {
   final String icon;
 }
 
+class HabitTemplateSummary {
+  const HabitTemplateSummary({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.category,
+    required this.defaultTargetCount,
+    required this.unit,
+    required this.icon,
+  });
+
+  factory HabitTemplateSummary.fromJson(Map<String, dynamic> json) {
+    return HabitTemplateSummary(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      category: json['category']?.toString() ?? 'custom',
+      defaultTargetCount: _asInt(json['default_target_count'], fallback: 1),
+      unit: json['unit']?.toString() ?? 'checkbox',
+      icon: json['icon']?.toString() ?? 'check',
+    );
+  }
+
+  final String id;
+  final String title;
+  final String description;
+  final String category;
+  final int defaultTargetCount;
+  final String unit;
+  final String icon;
+}
+
 class DashboardSnapshot {
   const DashboardSnapshot({
     required this.consumedCalories,

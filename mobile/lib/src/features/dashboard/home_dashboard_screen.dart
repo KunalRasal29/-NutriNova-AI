@@ -815,7 +815,7 @@ class _ChecklistPreview extends ConsumerWidget {
                 const Text('No active habits yet.'),
                 const SizedBox(height: NovaSpacing.md),
                 NovaButton.secondary(
-                  label: 'Open templates',
+                  label: 'Add checklist item',
                   icon: Icons.add_task,
                   onPressed: () => context.go('/habits'),
                 ),

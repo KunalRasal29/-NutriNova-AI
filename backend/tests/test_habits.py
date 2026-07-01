@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from habits.models import DailyChecklistTask, Habit, HabitCheckIn
@@ -170,19 +173,21 @@ def test_uncheck_habit(api_client, user):
 @pytest.mark.django_db
 def test_streak_calculation_endpoint(api_client, user):
     api_client.force_authenticate(user=user)
+    today = timezone.localdate()
+    yesterday = today - timedelta(days=1)
     habit = create_habit_with_payload(
         api_client,
         {
             "title": "Drink water",
             "recurrence": "daily",
-            "start_date": "2026-06-28",
+            "start_date": yesterday.isoformat(),
             "target_count": 1,
         },
     )
-    for day in ("2026-06-28", "2026-06-29"):
+    for day in (yesterday, today):
         response = api_client.post(
             reverse("habit-check", args=[habit["id"]]),
-            {"date": day, "completed_count": 1},
+            {"date": day.isoformat(), "completed_count": 1},
             format="json",
         )
         assert response.status_code == 200

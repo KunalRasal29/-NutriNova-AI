@@ -292,9 +292,9 @@ class _SearchShortcuts extends StatelessWidget {
   Widget build(BuildContext context) {
     final shortcuts = [
       (Icons.qr_code_scanner, 'Barcode', '/barcode'),
-      (Icons.mic_none_outlined, 'Voice log', '/meals/quick-add'),
+      (Icons.flash_on_outlined, 'Text add', '/meals/quick-add'),
       (Icons.camera_alt_outlined, 'Meal scan', '/photos/scan'),
-      (Icons.flash_on_outlined, 'Quick add', '/meals/quick-add'),
+      (Icons.add_circle_outline, 'Custom', '/foods/custom'),
     ];
     return GridView.count(
       shrinkWrap: true,

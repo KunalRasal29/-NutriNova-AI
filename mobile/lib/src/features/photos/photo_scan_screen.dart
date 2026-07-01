@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -51,13 +52,7 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
                         ? const Center(
                             child: Icon(Icons.camera_alt_outlined, size: 44),
                           )
-                        : ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              File(_image!.path),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
+                        : _PickedImagePreview(image: _image!),
                   ),
                 ),
                 const SizedBox(height: NovaSpacing.lg),
@@ -79,6 +74,12 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: NovaSpacing.sm),
+                const Text(
+                  'On web preview, camera access depends on browser permission. Gallery is the most reliable test path.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: NovaColors.graphite),
                 ),
               ],
             ),
@@ -144,14 +145,39 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
 
   Future<void> _pick(ImageSource source) async {
     if (_uploading) return;
-    final picked =
-        await ImagePicker().pickImage(source: source, imageQuality: 85);
-    if (picked != null && mounted) {
+    try {
+      final picked =
+          await ImagePicker().pickImage(source: source, imageQuality: 85);
+      if (picked != null && mounted) {
+        setState(() {
+          _image = picked;
+          _errorMessage = '';
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
       setState(() {
-        _image = picked;
-        _errorMessage = '';
+        _errorMessage = source == ImageSource.camera
+            ? 'Camera did not open. Allow camera permission or use Gallery.'
+            : error.toString();
       });
     }
+  }
+}
+
+class _PickedImagePreview extends StatelessWidget {
+  const _PickedImagePreview({required this.image});
+
+  final XFile image;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: kIsWeb
+          ? Image.network(image.path, fit: BoxFit.cover)
+          : Image.file(File(image.path), fit: BoxFit.cover),
+    );
   }
 }
 

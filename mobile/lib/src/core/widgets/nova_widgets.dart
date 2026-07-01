@@ -322,7 +322,7 @@ class _NovaAddSheet extends StatelessWidget {
                   icon: Icons.add_circle_outline,
                   label: 'Custom food',
                   color: NovaColors.violet,
-                  onTap: () => _go(context, '/foods/custom'),
+                  onTap: () => _go(context, _withMealType('/foods/custom')),
                 ),
                 _AddSheetTile(
                   icon: Icons.monitor_weight_outlined,

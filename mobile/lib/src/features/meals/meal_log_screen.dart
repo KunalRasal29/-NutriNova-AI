@@ -282,8 +282,8 @@ class _FastActions extends StatelessWidget {
           onTap: () => context.go(_withMealType('/barcode', mealType)),
         ),
         _ActionTile(
-          icon: Icons.mic_none_outlined,
-          label: 'Voice log',
+          icon: Icons.flash_on_outlined,
+          label: 'Text add',
           onTap: () => context.go(_withMealType('/meals/quick-add', mealType)),
         ),
         _ActionTile(
@@ -292,9 +292,9 @@ class _FastActions extends StatelessWidget {
           onTap: () => context.go(_withMealType('/photos/scan', mealType)),
         ),
         _ActionTile(
-          icon: Icons.flash_on_outlined,
-          label: 'Quick add',
-          onTap: () => context.go(_withMealType('/meals/quick-add', mealType)),
+          icon: Icons.add_circle_outline,
+          label: 'Custom',
+          onTap: () => context.go(_withMealType('/foods/custom', mealType)),
         ),
       ],
     );

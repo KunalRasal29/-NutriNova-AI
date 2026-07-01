@@ -46,6 +46,11 @@ final todayHabitsProvider = FutureProvider<List<HabitGridItem>>((ref) async {
   return ref.watch(nutritionRepositoryProvider).todayHabits();
 });
 
+final habitTemplatesProvider =
+    FutureProvider<List<HabitTemplateSummary>>((ref) async {
+  return ref.watch(nutritionRepositoryProvider).habitTemplates();
+});
+
 final habitMonthGridProvider =
     FutureProvider.family<Map<String, dynamic>, String>((ref, month) async {
   return ref.watch(nutritionRepositoryProvider).monthHabitGrid(month);

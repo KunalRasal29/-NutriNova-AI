@@ -2,14 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/models/app_models.dart';
 import '../../core/repositories/providers.dart';
 import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
 
 class CreateCustomFoodScreen extends ConsumerStatefulWidget {
-  const CreateCustomFoodScreen({this.initialBarcode = '', super.key});
+  const CreateCustomFoodScreen({
+    this.initialBarcode = '',
+    this.initialMealType = 'breakfast',
+    super.key,
+  });
 
   final String initialBarcode;
+  final String initialMealType;
 
   @override
   ConsumerState<CreateCustomFoodScreen> createState() =>
@@ -31,12 +37,26 @@ class _CreateCustomFoodScreenState
   final _sodium = TextEditingController();
   late final TextEditingController _barcode;
   final _notes = TextEditingController();
+  late String _mealType;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     _barcode = TextEditingController(text: widget.initialBarcode);
+    _mealType = widget.initialMealType;
+    for (final controller in [
+      _calories,
+      _protein,
+      _carbs,
+      _fat,
+      _fiber,
+      _sugar,
+      _sodium,
+      _grams,
+    ]) {
+      controller.addListener(_refreshPreview);
+    }
   }
 
   @override
@@ -63,22 +83,40 @@ class _CreateCustomFoodScreenState
 
   @override
   Widget build(BuildContext context) {
+    final preview = _preview();
     return NovaScaffold(
       title: 'Custom food',
       body: ListView(
         padding: const EdgeInsets.all(NovaSpacing.lg),
         children: [
-          const NovaBadge(
-            label: 'Private USER_CUSTOM food',
-            icon: Icons.lock_outline,
-            color: NovaColors.mint,
+          const PageIntro(
+            title: 'Create custom food',
+            subtitle:
+                'Add a private food when search or barcode does not have it.',
+            icon: Icons.add_circle_outline,
           ),
           const SizedBox(height: NovaSpacing.md),
-          const SourceConfidenceBadges(
-            source: 'USER_CUSTOM',
-            confidence: 0.5,
-            verified: false,
-            classification: 'user_custom',
+          const Wrap(
+            spacing: NovaSpacing.sm,
+            runSpacing: NovaSpacing.sm,
+            children: [
+              NovaBadge(
+                label: 'Private to you',
+                icon: Icons.lock_outline,
+                color: NovaColors.mint,
+              ),
+              SourceConfidenceBadges(
+                source: 'USER_CUSTOM',
+                confidence: 0.5,
+                verified: false,
+                classification: 'user_custom',
+              ),
+            ],
+          ),
+          const SizedBox(height: NovaSpacing.lg),
+          MealTypeSelector(
+            value: _mealType,
+            onChanged: (value) => setState(() => _mealType = value),
           ),
           const SizedBox(height: NovaSpacing.lg),
           if (widget.initialBarcode.isNotEmpty) ...[
@@ -166,6 +204,33 @@ class _CreateCustomFoodScreenState
             ),
           ),
           const SizedBox(height: NovaSpacing.lg),
+          NovaCard(
+            color: NovaColors.panelRaised,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SectionHeader(title: 'Preview per serving'),
+                const SizedBox(height: NovaSpacing.md),
+                Text(
+                  '${preview.caloriesKcal.toStringAsFixed(0)} kcal',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                const SizedBox(height: NovaSpacing.sm),
+                Text(
+                  'P ${preview.proteinG.toStringAsFixed(1)}g  C ${preview.carbsG.toStringAsFixed(1)}g  F ${preview.fatG.toStringAsFixed(1)}g',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: NovaSpacing.xs),
+                Text(
+                  'Fiber ${preview.fiberG.toStringAsFixed(1)}g  Sugar ${preview.sugarG.toStringAsFixed(1)}g  Sodium ${preview.sodiumMg.toStringAsFixed(0)}mg',
+                  style: const TextStyle(color: NovaColors.graphite),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: NovaSpacing.lg),
           NovaButton.primary(
             label: _saving ? 'Saving...' : 'Save custom food',
             icon: Icons.save_outlined,
@@ -192,7 +257,12 @@ class _CreateCustomFoodScreenState
                               'Custom food saved. Choose quantity to log it.'),
                         ),
                       );
-                      context.go('/foods/${food.id}');
+                      context.go(
+                        Uri(
+                          path: '/foods/${food.id}',
+                          queryParameters: {'meal_type': _mealType},
+                        ).toString(),
+                      );
                     } catch (error) {
                       if (!context.mounted) return;
                       setState(() => _saving = false);
@@ -212,6 +282,26 @@ class _CreateCustomFoodScreenState
       keyboardType: TextInputType.number,
       decoration: InputDecoration(labelText: label),
     );
+  }
+
+  MacroPreview _preview() {
+    return MacroPreview(
+      caloriesKcal: _number(_calories),
+      proteinG: _number(_protein),
+      carbsG: _number(_carbs),
+      fatG: _number(_fat),
+      fiberG: _number(_fiber),
+      sugarG: _number(_sugar),
+      sodiumMg: _number(_sodium),
+    );
+  }
+
+  double _number(TextEditingController controller) {
+    return double.tryParse(controller.text.trim()) ?? 0;
+  }
+
+  void _refreshPreview() {
+    if (mounted) setState(() {});
   }
 
   Map<String, dynamic> _payload() {

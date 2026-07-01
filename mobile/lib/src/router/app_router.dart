@@ -87,6 +87,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/foods/custom',
         builder: (_, state) => CreateCustomFoodScreen(
           initialBarcode: state.uri.queryParameters['barcode'] ?? '',
+          initialMealType:
+              state.uri.queryParameters['meal_type'] ?? 'breakfast',
         ),
       ),
       GoRoute(
