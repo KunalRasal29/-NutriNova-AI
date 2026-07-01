@@ -63,7 +63,10 @@ abstract class NutritionRepository {
   Future<void> checkHabit(String habitId, int completedCount);
   Future<void> uncheckHabit(String habitId);
   Future<Map<String, dynamic>> monthHabitGrid(String month);
-  Future<PhotoReview> uploadMealPhoto(String path);
+  Future<PhotoReview> uploadMealPhoto({
+    required String fileName,
+    required List<int> bytes,
+  });
   Future<PhotoReview> photoReview(String analysisId);
   Future<PhotoReview> incrementPhotoFood(String detectedFoodId);
   Future<PhotoReview> decrementPhotoFood(String detectedFoodId);
@@ -464,11 +467,15 @@ class ApiNutritionRepository implements NutritionRepository {
   }
 
   @override
-  Future<PhotoReview> uploadMealPhoto(String path) async {
-    final response = await _apiClient.uploadFile(
+  Future<PhotoReview> uploadMealPhoto({
+    required String fileName,
+    required List<int> bytes,
+  }) async {
+    final response = await _apiClient.uploadBytes(
       '/api/photos/analyze-meal/',
       fieldName: 'image',
-      filePath: path,
+      fileName: fileName,
+      bytes: bytes,
     );
     final data = response.data as Map<String, dynamic>;
     final analysisId =
@@ -1352,7 +1359,10 @@ class MockNutritionRepository implements NutritionRepository {
   }
 
   @override
-  Future<PhotoReview> uploadMealPhoto(String path) async {
+  Future<PhotoReview> uploadMealPhoto({
+    required String fileName,
+    required List<int> bytes,
+  }) async {
     return const PhotoReview(
       analysisId: 'mock-analysis',
       status: 'needs_review',
@@ -1392,7 +1402,8 @@ class MockNutritionRepository implements NutritionRepository {
   }
 
   @override
-  Future<PhotoReview> photoReview(String analysisId) => uploadMealPhoto('');
+  Future<PhotoReview> photoReview(String analysisId) =>
+      uploadMealPhoto(fileName: 'mock-meal.jpg', bytes: const []);
 
   @override
   Future<PhotoReview> incrementPhotoFood(String detectedFoodId) async {
@@ -1432,7 +1443,7 @@ class MockNutritionRepository implements NutritionRepository {
 
   @override
   Future<PhotoReview> decrementPhotoFood(String detectedFoodId) =>
-      uploadMealPhoto('');
+      uploadMealPhoto(fileName: 'mock-meal.jpg', bytes: const []);
 
   @override
   Future<PhotoReview> updatePhotoFood({
@@ -1444,7 +1455,7 @@ class MockNutritionRepository implements NutritionRepository {
     bool? isRemoved,
     String? correctionNote,
   }) =>
-      uploadMealPhoto('');
+      uploadMealPhoto(fileName: 'mock-meal.jpg', bytes: const []);
 
   @override
   Future<PhotoReview> addManualPhotoFood({
@@ -1454,7 +1465,7 @@ class MockNutritionRepository implements NutritionRepository {
     String? unit,
     double? totalGrams,
   }) =>
-      uploadMealPhoto('');
+      uploadMealPhoto(fileName: 'mock-meal.jpg', bytes: const []);
 
   @override
   Future<void> confirmPhotoMeal(String analysisId, String mealType) async {}

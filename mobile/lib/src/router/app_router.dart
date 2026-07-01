@@ -7,6 +7,7 @@ import '../features/auth/auth_controller.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/barcode/barcode_scan_screen.dart';
+import '../features/body/log_weight_screen.dart';
 import '../features/dashboard/home_dashboard_screen.dart';
 import '../features/foods/create_custom_food_screen.dart';
 import '../features/foods/food_detail_screen.dart';
@@ -115,6 +116,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path: '/recipes', builder: (_, __) => const RecipeBuilderScreen()),
       GoRoute(path: '/habits', builder: (_, __) => const HabitGridScreen()),
       GoRoute(path: '/analytics', builder: (_, __) => const AnalyticsScreen()),
+      GoRoute(path: '/weight/log', builder: (_, __) => const LogWeightScreen()),
       GoRoute(
           path: '/profile', builder: (_, __) => const ProfileSettingsScreen()),
     ],

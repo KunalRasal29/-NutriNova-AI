@@ -1,6 +1,5 @@
-import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -113,9 +112,13 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
                       if (mounted) {
                         setState(() => _progressLabel = 'Analyzing meal');
                       }
+                      final bytes = await _image!.readAsBytes();
                       final review = await ref
                           .read(nutritionRepositoryProvider)
-                          .uploadMealPhoto(_image!.path);
+                          .uploadMealPhoto(
+                            fileName: _fileNameFor(_image!),
+                            bytes: bytes,
+                          );
                       if (context.mounted) {
                         context.go(
                           Uri(
@@ -174,11 +177,26 @@ class _PickedImagePreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: kIsWeb
-          ? Image.network(image.path, fit: BoxFit.cover)
-          : Image.file(File(image.path), fit: BoxFit.cover),
+      child: FutureBuilder<Uint8List>(
+        future: image.readAsBytes(),
+        builder: (context, snapshot) {
+          final bytes = snapshot.data;
+          if (bytes == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return Image.memory(bytes, fit: BoxFit.cover);
+        },
+      ),
     );
   }
+}
+
+String _fileNameFor(XFile image) {
+  if (image.name.isNotEmpty) return image.name;
+  final path = image.path;
+  final normalized = path.replaceAll('\\', '/');
+  final lastSegment = normalized.split('/').last;
+  return lastSegment.isEmpty ? 'meal-photo.jpg' : lastSegment;
 }
 
 class _ScanProgressCard extends StatelessWidget {

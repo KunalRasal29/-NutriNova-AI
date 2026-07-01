@@ -328,7 +328,7 @@ class _NovaAddSheet extends StatelessWidget {
                   icon: Icons.monitor_weight_outlined,
                   label: 'Weight',
                   color: NovaColors.lime,
-                  onTap: () => _go(context, '/analytics'),
+                  onTap: () => _go(context, '/weight/log'),
                 ),
               ],
             ),

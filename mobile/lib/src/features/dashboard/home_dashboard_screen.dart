@@ -120,7 +120,7 @@ class _GreetingHeader extends StatelessWidget {
         IconButton(
           tooltip: 'Notifications',
           icon: const Icon(Icons.notifications_none),
-          onPressed: () {},
+          onPressed: () => _showNotificationsSheet(context),
         ),
       ],
     );
@@ -143,6 +143,35 @@ class _GreetingHeader extends StatelessWidget {
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
+}
+
+void _showNotificationsSheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    backgroundColor: NovaColors.panel,
+    builder: (_) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          NovaSpacing.lg,
+          NovaSpacing.sm,
+          NovaSpacing.lg,
+          NovaSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            SectionHeader(title: 'Notifications'),
+            SizedBox(height: NovaSpacing.md),
+            Text(
+              'No reminders are scheduled yet. Use checklist items, meal logging, and weight check-ins today; reminder scheduling is tracked in the QA plan.',
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _CaloriesHero extends StatelessWidget {

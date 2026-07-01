@@ -95,6 +95,18 @@ class ApiClient {
     return _guard(() => dio.post<dynamic>(path, data: form));
   }
 
+  Future<Response<dynamic>> uploadBytes(
+    String path, {
+    required String fieldName,
+    required String fileName,
+    required List<int> bytes,
+  }) async {
+    final form = FormData.fromMap({
+      fieldName: MultipartFile.fromBytes(bytes, filename: fileName),
+    });
+    return _guard(() => dio.post<dynamic>(path, data: form));
+  }
+
   Future<Response<dynamic>> _guard(
     Future<Response<dynamic>> Function() request,
   ) async {
