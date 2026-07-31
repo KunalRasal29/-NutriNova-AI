@@ -226,6 +226,7 @@ def build_quick_add_item(user, parsed: ParsedQuickText) -> dict:
                 food=food,
                 quantity_value=parsed.quantity_value,
                 quantity_unit=parsed.quantity_unit,
+                user=user,
             )
             warnings.extend(preview["warnings"])
         except ValidationError as exc:

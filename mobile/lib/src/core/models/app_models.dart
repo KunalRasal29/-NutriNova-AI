@@ -84,6 +84,53 @@ class MacroPreview {
   final double saturatedFatG;
 }
 
+class NutritionTargetPlan {
+  const NutritionTargetPlan({
+    required this.caloriesKcal,
+    required this.proteinG,
+    required this.carbsG,
+    required this.fatG,
+    required this.fiberG,
+    required this.waterMl,
+    required this.method,
+    required this.disclaimer,
+    this.assumptions = const [],
+    this.customized = false,
+    this.requiresConfirmation = false,
+  });
+
+  factory NutritionTargetPlan.fromJson(Map<String, dynamic> json) {
+    final targets = json['targets'] as Map<String, dynamic>? ?? const {};
+    return NutritionTargetPlan(
+      caloriesKcal: _asDouble(targets['calories_kcal']),
+      proteinG: _asDouble(targets['protein_g']),
+      carbsG: _asDouble(targets['carbs_g']),
+      fatG: _asDouble(targets['fat_g']),
+      fiberG: _asDouble(targets['fiber_g']),
+      waterMl: _asDouble(targets['water_ml']),
+      method: json['method']?.toString() ?? '',
+      disclaimer: json['disclaimer']?.toString() ?? '',
+      assumptions: (json['assumptions'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      customized: json['customized'] == true,
+      requiresConfirmation: json['requires_confirmation'] == true,
+    );
+  }
+
+  final double caloriesKcal;
+  final double proteinG;
+  final double carbsG;
+  final double fatG;
+  final double fiberG;
+  final double waterMl;
+  final String method;
+  final String disclaimer;
+  final List<String> assumptions;
+  final bool customized;
+  final bool requiresConfirmation;
+}
+
 class FoodSummary {
   const FoodSummary({
     required this.id,
@@ -95,6 +142,10 @@ class FoodSummary {
     required this.verified,
     required this.preview,
     this.isFavorite = false,
+    this.preparationState = 'unspecified',
+    this.ingredientsText = '',
+    this.allergens = const [],
+    this.personalPortionGrams = const {},
     this.defaultServingDescription = '',
     this.defaultServingGrams = 0,
   });
@@ -115,6 +166,12 @@ class FoodSummary {
           json['data_classification']?.toString() ?? 'official_unverified',
       verified: json['verified'] == true,
       isFavorite: json['is_favorite'] == true,
+      preparationState: json['preparation_state']?.toString() ?? 'unspecified',
+      ingredientsText: json['ingredients_text']?.toString() ?? '',
+      allergens: (json['allergens'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      personalPortionGrams: _personalPortionMap(json),
       defaultServingDescription: serving['description']?.toString() ?? '',
       defaultServingGrams: _asDouble(serving['grams']),
       preview: MacroPreview(
@@ -142,6 +199,10 @@ class FoodSummary {
   final String dataClassification;
   final bool verified;
   final bool isFavorite;
+  final String preparationState;
+  final String ingredientsText;
+  final List<String> allergens;
+  final Map<String, double> personalPortionGrams;
   final MacroPreview preview;
   final String defaultServingDescription;
   final double defaultServingGrams;
@@ -158,6 +219,280 @@ class FoodSummary {
     }
     return '100g reference';
   }
+}
+
+class FoodSearchRequest {
+  const FoodSearchRequest({
+    required this.query,
+    this.page = 1,
+    this.pageSize = 25,
+    this.foodType = '',
+    this.source = '',
+    this.preparationState = '',
+    this.verified,
+  });
+
+  final String query;
+  final int page;
+  final int pageSize;
+  final String foodType;
+  final String source;
+  final String preparationState;
+  final bool? verified;
+
+  Map<String, dynamic> get queryParameters => {
+        'q': query.trim(),
+        'page': page,
+        'page_size': pageSize,
+        if (foodType.isNotEmpty) 'food_type': foodType,
+        if (source.isNotEmpty) 'source': source,
+        if (preparationState.isNotEmpty) 'preparation_state': preparationState,
+        if (verified != null) 'verified': verified,
+      };
+
+  String get cacheKey => [
+        query.trim().toLowerCase(),
+        page,
+        pageSize,
+        foodType,
+        source,
+        preparationState,
+        verified,
+      ].join('|');
+
+  FoodSearchRequest copyWith({int? page}) => FoodSearchRequest(
+        query: query,
+        page: page ?? this.page,
+        pageSize: pageSize,
+        foodType: foodType,
+        source: source,
+        preparationState: preparationState,
+        verified: verified,
+      );
+}
+
+class FoodSearchPage {
+  const FoodSearchPage({
+    required this.items,
+    required this.count,
+    required this.page,
+    required this.hasMore,
+  });
+
+  factory FoodSearchPage.fromJson(
+    Map<String, dynamic> json, {
+    required int page,
+  }) {
+    final values = json['results'] as List<dynamic>? ?? const [];
+    return FoodSearchPage(
+      items: values
+          .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      count: (json['count'] as num?)?.toInt() ?? values.length,
+      page: page,
+      hasMore: json['next'] != null,
+    );
+  }
+
+  final List<FoodSummary> items;
+  final int count;
+  final int page;
+  final bool hasMore;
+}
+
+class NutrientEstimateRange {
+  const NutrientEstimateRange({
+    required this.minimum,
+    required this.likely,
+    required this.maximum,
+  });
+
+  factory NutrientEstimateRange.fromJson(Map<String, dynamic> json) {
+    return NutrientEstimateRange(
+      minimum: _asDouble(json['min']),
+      likely: _asDouble(json['likely']),
+      maximum: _asDouble(json['max']),
+    );
+  }
+
+  final double minimum;
+  final double likely;
+  final double maximum;
+}
+
+class CustomFoodReference {
+  const CustomFoodReference({
+    required this.foodId,
+    required this.name,
+    required this.brand,
+    required this.preparationState,
+    required this.sourceName,
+    required this.sourceBadge,
+    required this.matchScore,
+    required this.nutrients,
+  });
+
+  factory CustomFoodReference.fromJson(Map<String, dynamic> json) {
+    final source = json['source'];
+    final sourceMap = source is Map<String, dynamic> ? source : const {};
+    final nutrients = json['nutrients_for_entered_serving'];
+    return CustomFoodReference(
+      foodId: json['food_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Reference food',
+      brand: json['brand']?.toString() ?? '',
+      preparationState: json['preparation_state']?.toString() ?? 'unspecified',
+      sourceName:
+          sourceMap['name']?.toString() ?? (source is String ? source : ''),
+      sourceBadge: json['source_badge']?.toString() ??
+          sourceMap['source_type']?.toString() ??
+          '',
+      matchScore: _asDouble(json['name_match_score']),
+      nutrients: _doubleMap(nutrients),
+    );
+  }
+
+  final String foodId;
+  final String name;
+  final String brand;
+  final String preparationState;
+  final String sourceName;
+  final String sourceBadge;
+  final double matchScore;
+  final Map<String, double> nutrients;
+}
+
+class CustomFoodEstimate {
+  const CustomFoodEstimate({
+    required this.normalizedFoodName,
+    required this.suggestedNutrients,
+    required this.ranges,
+    required this.references,
+    required this.sourceBadges,
+    required this.confidence,
+    required this.warnings,
+    required this.canEstimate,
+    required this.requiresReview,
+    required this.message,
+    required this.calculatedCaloriesFromMacros,
+    required this.accuracyNotice,
+    required this.estimationMethod,
+  });
+
+  factory CustomFoodEstimate.fromJson(Map<String, dynamic> json) {
+    final rangeJson = json['estimated_range'] as Map<String, dynamic>? ?? {};
+    final references = json['reference_matches'] as List<dynamic>? ?? const [];
+    return CustomFoodEstimate(
+      normalizedFoodName: json['normalized_food_name']?.toString() ?? '',
+      suggestedNutrients: _doubleMap(json['suggested_nutrients']),
+      ranges: {
+        for (final entry in rangeJson.entries)
+          if (entry.value is Map<String, dynamic>)
+            entry.key: NutrientEstimateRange.fromJson(
+              entry.value as Map<String, dynamic>,
+            ),
+      },
+      references: references
+          .map(
+            (item) =>
+                CustomFoodReference.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+      sourceBadges: (json['source_badges'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      confidence: _asDouble(json['confidence']),
+      warnings: (json['warnings'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      canEstimate: json['can_estimate'] == true,
+      requiresReview: json['requires_review'] != false,
+      message: json['message']?.toString() ?? '',
+      calculatedCaloriesFromMacros:
+          _asDouble(json['calculated_calories_from_macros']),
+      accuracyNotice: json['accuracy_notice']?.toString() ?? '',
+      estimationMethod: json['estimation_method']?.toString() ?? '',
+    );
+  }
+
+  final String normalizedFoodName;
+  final Map<String, double> suggestedNutrients;
+  final Map<String, NutrientEstimateRange> ranges;
+  final List<CustomFoodReference> references;
+  final List<String> sourceBadges;
+  final double confidence;
+  final List<String> warnings;
+  final bool canEstimate;
+  final bool requiresReview;
+  final String message;
+  final double calculatedCaloriesFromMacros;
+  final String accuracyNotice;
+  final String estimationMethod;
+}
+
+class CustomFoodReview {
+  const CustomFoodReview({
+    required this.status,
+    required this.servingQuantity,
+    required this.servingUnit,
+    required this.servingWeightG,
+    required this.estimationMethod,
+    required this.originalEstimate,
+    required this.estimate,
+    required this.confirmedNutrients,
+    required this.effectiveNutrients,
+    required this.references,
+    required this.confidence,
+    required this.userCorrections,
+    required this.warnings,
+    required this.calculatedCaloriesFromMacros,
+    required this.requiresReview,
+    required this.version,
+  });
+
+  factory CustomFoodReview.fromJson(Map<String, dynamic> json) {
+    final references = json['reference_foods'] as List<dynamic>? ?? const [];
+    return CustomFoodReview(
+      status: json['status']?.toString() ?? 'draft',
+      servingQuantity: _asDouble(json['serving_quantity'], fallback: 1),
+      servingUnit: json['serving_unit']?.toString() ?? 'serving',
+      servingWeightG: _asDouble(json['serving_weight_g']),
+      estimationMethod: json['estimation_method']?.toString() ?? '',
+      originalEstimate: _doubleMap(json['original_estimated_nutrients']),
+      estimate: _doubleMap(json['estimated_nutrients']),
+      confirmedNutrients: _doubleMap(json['confirmed_nutrients']),
+      effectiveNutrients: _doubleMap(json['effective_review_nutrients']),
+      references: references
+          .whereType<Map<String, dynamic>>()
+          .map(CustomFoodReference.fromJson)
+          .toList(),
+      confidence: _asDouble(json['confidence']),
+      userCorrections: _doubleMap(json['user_corrections']),
+      warnings: (json['warnings'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      calculatedCaloriesFromMacros:
+          _asDouble(json['calculated_calories_from_macros']),
+      requiresReview: json['requires_review'] == true,
+      version: (json['version'] as num?)?.toInt() ?? 1,
+    );
+  }
+
+  final String status;
+  final double servingQuantity;
+  final String servingUnit;
+  final double servingWeightG;
+  final String estimationMethod;
+  final Map<String, double> originalEstimate;
+  final Map<String, double> estimate;
+  final Map<String, double> confirmedNutrients;
+  final Map<String, double> effectiveNutrients;
+  final List<CustomFoodReference> references;
+  final double confidence;
+  final Map<String, double> userCorrections;
+  final List<String> warnings;
+  final double calculatedCaloriesFromMacros;
+  final bool requiresReview;
+  final int version;
 }
 
 class FoodServingOption {
@@ -225,6 +560,11 @@ class FoodDetail {
     required this.servings,
     required this.nutrients,
     required this.isFavorite,
+    this.preparationState = 'unspecified',
+    this.ingredientsText = '',
+    this.allergens = const [],
+    this.personalPortionGrams = const {},
+    this.customFood,
   });
 
   factory FoodDetail.fromJson(Map<String, dynamic> json) {
@@ -258,6 +598,17 @@ class FoodDetail {
           )
           .toList(),
       isFavorite: json['is_favorite'] == true,
+      preparationState: json['preparation_state']?.toString() ?? 'unspecified',
+      ingredientsText: json['ingredients_text']?.toString() ?? '',
+      allergens: (json['allergens'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      personalPortionGrams: _personalPortionMap(json),
+      customFood: json['custom_food'] is Map<String, dynamic>
+          ? CustomFoodReview.fromJson(
+              json['custom_food'] as Map<String, dynamic>,
+            )
+          : null,
     );
   }
 
@@ -273,6 +624,11 @@ class FoodDetail {
   final List<FoodServingOption> servings;
   final List<FoodNutrientValue> nutrients;
   final bool isFavorite;
+  final String preparationState;
+  final String ingredientsText;
+  final List<String> allergens;
+  final Map<String, double> personalPortionGrams;
+  final CustomFoodReview? customFood;
 
   MacroPreview get per100gPreview => MacroPreview(
         caloriesKcal: nutrientAmount('calories'),
@@ -303,6 +659,10 @@ class FoodDetail {
   }) {
     if (totalGrams != null && totalGrams > 0) return totalGrams;
     if (unit == 'gram') return quantity;
+    final personalGrams = personalPortionGrams[unit];
+    if (personalGrams != null && personalGrams > 0) {
+      return quantity * personalGrams;
+    }
     FoodServingOption? matchedServing;
     FoodServingOption? defaultServing;
     for (final serving in servings) {
@@ -348,6 +708,17 @@ class FoodDetail {
       saturatedFatG: per100g.saturatedFatG * scale,
     );
   }
+}
+
+Map<String, double> _personalPortionMap(Map<String, dynamic> json) {
+  final entries =
+      json['personal_portion_preferences'] as List<dynamic>? ?? const [];
+  return {
+    for (final item in entries)
+      if (item is Map<String, dynamic> &&
+          (item['unit']?.toString().isNotEmpty ?? false))
+        item['unit'].toString(): _asDouble(item['grams_per_unit']),
+  };
 }
 
 class MealLogSummary {
@@ -408,6 +779,7 @@ class MealItemSummary {
     this.confidence = 0,
     this.verified = false,
     this.classification = 'official_unverified',
+    this.preparationState = 'unspecified',
     this.quantity = 0,
     this.unit = '',
     this.grams = 0,
@@ -444,6 +816,8 @@ class MealItemSummary {
       verified: json['food_verified'] == true,
       classification:
           json['food_data_classification']?.toString() ?? 'official_unverified',
+      preparationState:
+          json['food_preparation_state']?.toString() ?? 'unspecified',
       quantity: _asDouble(json['quantity']),
       unit: json['unit']?.toString() ?? '',
       grams: _asDouble(json['grams_calculated']),
@@ -466,6 +840,7 @@ class MealItemSummary {
   final double confidence;
   final bool verified;
   final String classification;
+  final String preparationState;
   final double quantity;
   final String unit;
   final double grams;
@@ -557,9 +932,18 @@ class DashboardSnapshot {
     required this.weightChangeKg,
     required this.insight,
     this.fiberG = 0,
+    this.targetProteinG = 0,
+    this.targetCarbsG = 0,
+    this.targetFatG = 0,
+    this.targetFiberG = 0,
+    this.targetWaterMl = 0,
     this.sugarG = 0,
     this.sodiumMg = 0,
     this.micronutrients = const {},
+    this.waterMl = 0,
+    this.steps = 0,
+    this.workoutMinutes = 0,
+    this.exerciseCalories = 0,
   });
 
   final double consumedCalories;
@@ -568,9 +952,18 @@ class DashboardSnapshot {
   final double carbsG;
   final double fatG;
   final double fiberG;
+  final double targetProteinG;
+  final double targetCarbsG;
+  final double targetFatG;
+  final double targetFiberG;
+  final double targetWaterMl;
   final double sugarG;
   final double sodiumMg;
   final Map<String, double> micronutrients;
+  final double waterMl;
+  final int steps;
+  final int workoutMinutes;
+  final double exerciseCalories;
   final int waterCompleted;
   final int waterTarget;
   final List<MealItemSummary> meals;
@@ -825,6 +1218,8 @@ class PhotoReviewItem {
     this.warnings = const [],
     this.alternatives = const [],
     this.addedManually = false,
+    this.eatenPercentage = 100,
+    this.splitParentId = '',
   });
 
   factory PhotoReviewItem.fromJson(Map<String, dynamic> json) {
@@ -862,6 +1257,11 @@ class PhotoReviewItem {
           .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
           .toList(),
       addedManually: json['added_manually'] == true,
+      eatenPercentage: _asDouble(
+        json['eaten_percentage'],
+        fallback: 100,
+      ),
+      splitParentId: json['split_parent']?.toString() ?? '',
     );
   }
 
@@ -884,12 +1284,18 @@ class PhotoReviewItem {
   final List<String> warnings;
   final List<FoodSummary> alternatives;
   final bool addedManually;
+  final double eatenPercentage;
+  final String splitParentId;
 
   String get portionLabel =>
       '${_formatNumber(quantity)} ${_unitLabel(unit, quantity)}';
 
   String get gramsLabel =>
       grams > 0 ? '${_formatNumber(grams)}g' : 'grams needed';
+
+  String get estimateRangeLabel => minGrams > 0 && maxGrams > 0
+      ? '${_formatNumber(minGrams)}-${_formatNumber(maxGrams)}g likely'
+      : '';
 
   String get matchLabel {
     if (matchedFoodName.isNotEmpty && detectedName.isNotEmpty) {
@@ -903,6 +1309,65 @@ class PhotoReviewItem {
   bool get needsAttention =>
       !isRemoved &&
       (matchedFoodId.isEmpty || grams <= 0 || warnings.isNotEmpty);
+}
+
+class NutritionLabelReview {
+  const NutritionLabelReview({
+    required this.analysisId,
+    required this.status,
+    required this.imageUrl,
+    required this.productName,
+    required this.brand,
+    required this.servingSize,
+    required this.barcode,
+    required this.nutrients,
+    required this.ingredients,
+    required this.allergens,
+    required this.confidence,
+  });
+
+  factory NutritionLabelReview.fromJson(Map<String, dynamic> json) {
+    final label = json['nutrition_label_scan'] as Map<String, dynamic>? ?? {};
+    return NutritionLabelReview(
+      analysisId: json['id']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'processing',
+      imageUrl: json['image_url']?.toString() ?? '',
+      productName: label['product_name']?.toString() ?? '',
+      brand: label['brand']?.toString() ?? '',
+      servingSize: label['serving_size']?.toString() ?? '',
+      barcode: label['barcode']?.toString() ?? '',
+      nutrients: Map<String, dynamic>.from(
+        label['parsed_nutrients'] as Map? ?? const {},
+      ),
+      ingredients: label['ingredients_text']?.toString() ?? '',
+      allergens: (label['allergens'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      confidence: _asDouble(label['confidence_score']),
+    );
+  }
+
+  final String analysisId;
+  final String status;
+  final String imageUrl;
+  final String productName;
+  final String brand;
+  final String servingSize;
+  final String barcode;
+  final Map<String, dynamic> nutrients;
+  final String ingredients;
+  final List<String> allergens;
+  final double confidence;
+
+  bool get isProcessing => status == 'uploaded' || status == 'processing';
+}
+
+Map<String, double> _doubleMap(Object? value) {
+  if (value is! Map) return const {};
+  return {
+    for (final entry in value.entries)
+      entry.key.toString(): _asDouble(entry.value),
+  };
 }
 
 double _asDouble(Object? value, {double fallback = 0}) {

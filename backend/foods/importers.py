@@ -17,73 +17,20 @@ from django.db import transaction
 from django.utils import timezone
 
 from foods.models import Food, FoodAlias, FoodDataImportJob, FoodNutrient, FoodServing
+from foods.preparation import infer_preparation_state
+from foods.services.nutrient_normalization import (
+    OPENFOODFACTS_NUTRIENT_CODE_BY_KEY,
+    USDA_NUTRIENT_CODE_BY_ID,
+    USDA_NUTRIENT_CODE_BY_NAME,
+)
 from nutrition.management.commands.seed_core_nutrition import DATA_SOURCES, NUTRIENTS
 from nutrition.models import Nutrient, NutritionDataSource
 
 logger = logging.getLogger(__name__)
 
-NUTRIENT_CODE_BY_FDC_ID = {
-    "1008": "calories",
-    "1003": "protein_g",
-    "1005": "carbs_g",
-    "1004": "fat_g",
-    "1079": "fiber_g",
-    "2000": "sugar_g",
-    "1093": "sodium_mg",
-    "1092": "potassium_mg",
-    "1087": "calcium_mg",
-    "1089": "iron_mg",
-    "1106": "vitamin_a_mcg",
-    "1162": "vitamin_c_mg",
-    "1114": "vitamin_d_mcg",
-    "1253": "cholesterol_mg",
-    "1258": "saturated_fat_g",
-    "1257": "trans_fat_g",
-}
-
-NUTRIENT_CODE_BY_NAME = {
-    "energy": "calories",
-    "energy kcal": "calories",
-    "protein": "protein_g",
-    "carbohydrate": "carbs_g",
-    "carbohydrate, by difference": "carbs_g",
-    "total carbohydrate": "carbs_g",
-    "fat": "fat_g",
-    "total lipid (fat)": "fat_g",
-    "fiber": "fiber_g",
-    "fiber, total dietary": "fiber_g",
-    "sugars": "sugar_g",
-    "sugars, total including nlea": "sugar_g",
-    "sodium": "sodium_mg",
-    "potassium": "potassium_mg",
-    "calcium": "calcium_mg",
-    "iron": "iron_mg",
-    "vitamin a": "vitamin_a_mcg",
-    "vitamin c": "vitamin_c_mg",
-    "vitamin d": "vitamin_d_mcg",
-    "cholesterol": "cholesterol_mg",
-    "fatty acids, total saturated": "saturated_fat_g",
-    "fatty acids, total trans": "trans_fat_g",
-}
-
-OPENFOODFACTS_TO_NUTRIENT_CODE = {
-    "energy-kcal_100g": "calories",
-    "proteins_100g": "protein_g",
-    "carbohydrates_100g": "carbs_g",
-    "fat_100g": "fat_g",
-    "fiber_100g": "fiber_g",
-    "sugars_100g": "sugar_g",
-    "sodium_100g": "sodium_mg",
-    "potassium_100g": "potassium_mg",
-    "calcium_100g": "calcium_mg",
-    "iron_100g": "iron_mg",
-    "vitamin-a_100g": "vitamin_a_mcg",
-    "vitamin-c_100g": "vitamin_c_mg",
-    "vitamin-d_100g": "vitamin_d_mcg",
-    "cholesterol_100g": "cholesterol_mg",
-    "saturated-fat_100g": "saturated_fat_g",
-    "trans-fat_100g": "trans_fat_g",
-}
+NUTRIENT_CODE_BY_FDC_ID = USDA_NUTRIENT_CODE_BY_ID
+NUTRIENT_CODE_BY_NAME = USDA_NUTRIENT_CODE_BY_NAME
+OPENFOODFACTS_TO_NUTRIENT_CODE = OPENFOODFACTS_NUTRIENT_CODE_BY_KEY
 
 MILLIGRAM_NUTRIENTS_FROM_GRAMS = {
     "sodium_mg",
@@ -102,6 +49,7 @@ class ImportResult:
     rows_processed: int = 0
     rows_created: int = 0
     rows_updated: int = 0
+    rows_skipped: int = 0
     errors: list[dict] | None = None
 
     def add_error(self, message: str, row: dict | None = None) -> None:
@@ -185,13 +133,26 @@ def get_manual_sample_source():
     )[0]
 
 
-def create_import_job(source, *, file_name="", checksum=""):
+def create_import_job(
+    source,
+    *,
+    file_name="",
+    checksum="",
+    dataset_type="",
+    release_version="",
+    resume_offset=0,
+    metadata=None,
+):
     return FoodDataImportJob.objects.create(
         source=source,
         status=FoodDataImportJob.Status.RUNNING,
         started_at=timezone.now(),
         file_name=file_name,
         checksum=checksum,
+        dataset_type=dataset_type,
+        release_version=release_version,
+        resume_offset=resume_offset,
+        metadata=metadata or {},
     )
 
 
@@ -207,6 +168,7 @@ def finish_import_job(job, result: ImportResult, status=None):
     job.rows_processed = result.rows_processed
     job.rows_created = result.rows_created
     job.rows_updated = result.rows_updated
+    job.rows_skipped = getattr(result, "rows_skipped", 0)
     job.errors = result.errors or []
     job.save()
     return job
@@ -252,6 +214,16 @@ def upsert_food_record(
     allergens=None,
     region="",
     metadata=None,
+    preparation_state=None,
+    dataset_type=Food.DatasetType.UNKNOWN,
+    dataset_release="",
+    imported_at=None,
+    source_updated_at=None,
+    edible_portion_percent=None,
+    completeness_score=Decimal("0.0000"),
+    quality_warnings=None,
+    is_deprecated=False,
+    replacement_food=None,
 ):
     barcode = normalize_barcode(barcode)
     defaults = {
@@ -262,7 +234,18 @@ def upsert_food_record(
         "allergens": allergens or [],
         "region": region or "",
         "metadata": metadata or {},
+        "dataset_type": dataset_type,
+        "dataset_release": dataset_release or "",
+        "imported_at": imported_at or timezone.now(),
+        "source_updated_at": source_updated_at,
+        "edible_portion_percent": edible_portion_percent,
+        "completeness_score": completeness_score,
+        "quality_warnings": quality_warnings or [],
+        "is_deprecated": is_deprecated,
+        "replacement_food": replacement_food,
         "food_type": food_type,
+        "preparation_state": preparation_state
+        or infer_preparation_state(canonical_name, food_type=food_type),
         "country_code": (country_code or "US").upper(),
         "language_code": language_code or "en",
         "barcode": barcode,
@@ -271,6 +254,20 @@ def upsert_food_record(
         "data_quality_score": data_quality_score,
         "verified": verified,
     }
+
+    if barcode:
+        barcode_owner = (
+            Food.objects.filter(barcode=barcode)
+            .exclude(source=source, external_id=str(external_id or ""))
+            .first()
+        )
+        if barcode_owner is not None:
+            defaults["barcode"] = ""
+            defaults["metadata"] = {
+                **defaults["metadata"],
+                "barcode_conflict": barcode,
+                "barcode_owner_food_id": str(barcode_owner.id),
+            }
 
     lookup = None
     if external_id:
@@ -329,9 +326,7 @@ def upsert_food_aliases(food, aliases: Iterable[str], language_code="en"):
 
 def replace_food_aliases(food, aliases: Iterable[str], language_code="en"):
     cleaned_aliases = {
-        str(alias or "").strip()
-        for alias in aliases
-        if str(alias or "").strip()
+        str(alias or "").strip() for alias in aliases if str(alias or "").strip()
     }
     queryset = FoodAlias.objects.filter(food=food, language_code=language_code or "en")
     if cleaned_aliases:
@@ -351,7 +346,8 @@ def upsert_food_nutrients(
 ):
     nutrient_map = Nutrient.objects.in_bulk(nutrients.keys(), field_name="code")
     for code, amount in nutrients.items():
-        decimal_amount = normalize_decimal(amount)
+        normalized = amount if hasattr(amount, "amount") else None
+        decimal_amount = normalize_decimal(normalized.amount if normalized else amount)
         nutrient = nutrient_map.get(code)
         if nutrient is None or decimal_amount is None:
             continue
@@ -363,12 +359,30 @@ def upsert_food_nutrients(
             defaults={
                 "amount_per_100g": decimal_amount,
                 "confidence_score": confidence_score,
+                "original_amount": (
+                    normalized.original_amount if normalized is not None else None
+                ),
+                "original_unit": normalized.original_unit if normalized else "",
+                "source_nutrient_id": (
+                    normalized.source_nutrient_id if normalized else ""
+                ),
+                "normalization_notes": (
+                    normalized.normalization_notes if normalized else ""
+                ),
             },
         )
 
 
 def import_json_food_records(records: list[dict], source, *, default_food_type):
     result = ImportResult(errors=[])
+    default_dataset_type = {
+        NutritionDataSource.SourceType.USDA_FDC: Food.DatasetType.USDA_FOUNDATION,
+        NutritionDataSource.SourceType.OPEN_FOOD_FACTS: (
+            Food.DatasetType.OPEN_FOOD_FACTS
+        ),
+        NutritionDataSource.SourceType.INDB: Food.DatasetType.INDIAN_LICENSED,
+        NutritionDataSource.SourceType.IFCT_2017: Food.DatasetType.INDIAN_LICENSED,
+    }.get(source.source_type, Food.DatasetType.UNKNOWN)
     for record in records:
         result.rows_processed += 1
         try:
@@ -396,6 +410,12 @@ def import_json_food_records(records: list[dict], source, *, default_food_type):
                     allergens=record.get("allergens", []),
                     region=record.get("region", ""),
                     metadata=record.get("metadata", {}),
+                    dataset_type=record.get("dataset_type", default_dataset_type),
+                    dataset_release=record.get("dataset_release", ""),
+                    completeness_score=normalize_decimal(
+                        record.get("completeness_score"),
+                        Decimal("0.0000"),
+                    ),
                 )
                 result.rows_created += int(created)
                 result.rows_updated += int(not created)

@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("foods", "0002_food_foodalias_fooddataimportjob_foodnutrient_and_more"),
     ]

@@ -11,7 +11,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("foods", "0001_initial"),
         ("nutrition", "0002_nutrient_nutritiondatasource"),

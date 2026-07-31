@@ -10,7 +10,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("foods", "0004_favoritefood"),
         ("meals", "0001_initial"),

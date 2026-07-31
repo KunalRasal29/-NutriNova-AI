@@ -1,6 +1,8 @@
 from django.contrib import admin
 
 from foods.models import (
+    CustomFoodProfile,
+    CustomFoodVersion,
     FavoriteFood,
     Food,
     FoodAlias,
@@ -12,6 +14,7 @@ from foods.models import (
     GroceryList,
     GroceryListItem,
     PantryItem,
+    UserPortionPreference,
 )
 
 
@@ -43,13 +46,27 @@ class FoodAdmin(admin.ModelAdmin):
         "brand_name",
         "source",
         "food_type",
+        "preparation_state",
+        "dataset_type",
+        "dataset_release",
         "country_code",
         "verified",
+        "is_deprecated",
+        "completeness_score",
         "data_quality_score",
         "created_by",
         "created_at",
     )
-    list_filter = ("food_type", "source", "country_code", "verified", "created_at")
+    list_filter = (
+        "food_type",
+        "preparation_state",
+        "dataset_type",
+        "source",
+        "country_code",
+        "verified",
+        "is_deprecated",
+        "created_at",
+    )
     search_fields = (
         "canonical_name",
         "brand_name",
@@ -57,9 +74,53 @@ class FoodAdmin(admin.ModelAdmin):
         "external_id",
         "created_by__email",
     )
-    autocomplete_fields = ("source", "created_by")
+    autocomplete_fields = ("source", "created_by", "replacement_food")
     inlines = [FoodAliasInline, FoodServingInline, FoodNutrientInline]
-    readonly_fields = ("search_text", "created_at", "updated_at")
+    readonly_fields = (
+        "normalized_name",
+        "search_text",
+        "imported_at",
+        "created_at",
+        "updated_at",
+    )
+    actions = ("deprecate_selected", "restore_selected")
+
+    @admin.action(
+        description="Mark selected foods deprecated (references are preserved)"
+    )
+    def deprecate_selected(self, request, queryset):
+        queryset.update(is_deprecated=True)
+
+    @admin.action(description="Restore selected foods to active search")
+    def restore_selected(self, request, queryset):
+        queryset.update(is_deprecated=False, replacement_food=None)
+
+
+@admin.register(CustomFoodProfile)
+class CustomFoodProfileAdmin(admin.ModelAdmin):
+    list_display = (
+        "food",
+        "user",
+        "status",
+        "estimation_method",
+        "confidence_score",
+        "version_number",
+        "confirmed_at",
+        "updated_at",
+    )
+    list_filter = ("status", "estimation_method", "confirmed_at")
+    search_fields = ("food__canonical_name", "food__brand_name", "user__email")
+    autocomplete_fields = ("food", "user")
+    readonly_fields = ("created_at", "updated_at", "confirmed_at")
+
+
+@admin.register(CustomFoodVersion)
+class CustomFoodVersionAdmin(admin.ModelAdmin):
+    list_display = ("food", "user", "version", "event", "status", "created_at")
+    list_filter = ("event", "status", "created_at")
+    search_fields = ("food__canonical_name", "user__email")
+    autocomplete_fields = ("food", "user")
+    readonly_fields = ("snapshot", "created_at", "updated_at")
 
 
 @admin.register(FoodDataImportJob)
@@ -70,11 +131,27 @@ class FoodDataImportJobAdmin(admin.ModelAdmin):
         "rows_processed",
         "rows_created",
         "rows_updated",
+        "rows_skipped",
+        "dataset_type",
+        "release_version",
+        "resume_offset",
         "created_at",
     )
-    list_filter = ("source", "status", "created_at")
+    list_filter = ("source", "status", "dataset_type", "created_at")
     search_fields = ("file_name", "checksum")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = (
+        "started_at",
+        "finished_at",
+        "rows_processed",
+        "rows_created",
+        "rows_updated",
+        "rows_skipped",
+        "resume_offset",
+        "errors",
+        "metadata",
+        "created_at",
+        "updated_at",
+    )
 
 
 @admin.register(FavoriteFood)
@@ -82,6 +159,21 @@ class FavoriteFoodAdmin(admin.ModelAdmin):
     list_display = ("user", "food", "created_at")
     search_fields = ("user__email", "food__canonical_name")
     autocomplete_fields = ("user", "food")
+
+
+@admin.register(UserPortionPreference)
+class UserPortionPreferenceAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "food",
+        "unit",
+        "grams_per_unit",
+        "times_used",
+        "last_used_at",
+    )
+    search_fields = ("user__email", "food__canonical_name", "unit")
+    autocomplete_fields = ("user", "food")
+    readonly_fields = ("times_used", "last_used_at", "created_at", "updated_at")
 
 
 @admin.register(FoodCategory)
@@ -121,6 +213,8 @@ class FoodNutrientAdmin(admin.ModelAdmin):
         "food",
         "nutrient",
         "amount_per_100g",
+        "original_amount",
+        "original_unit",
         "source",
         "confidence_score",
         "derivation_method",
@@ -128,7 +222,14 @@ class FoodNutrientAdmin(admin.ModelAdmin):
     list_filter = ("source", "derivation_method", "nutrient__nutrient_group")
     search_fields = ("food__canonical_name", "nutrient__code", "nutrient__name")
     autocomplete_fields = ("food", "nutrient", "source")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = (
+        "original_amount",
+        "original_unit",
+        "source_nutrient_id",
+        "normalization_notes",
+        "created_at",
+        "updated_at",
+    )
 
 
 @admin.register(PantryItem)

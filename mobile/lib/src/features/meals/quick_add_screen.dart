@@ -265,6 +265,12 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+              const SizedBox(height: NovaSpacing.md),
+              NovaButton.secondary(
+                label: 'Create custom food for missing item',
+                icon: Icons.add_circle_outline,
+                onPressed: _createCustomForMissingItem,
+              ),
             ],
           ],
         ],
@@ -311,6 +317,49 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
     setState(() {
       _result = null;
       _reviewItems = [];
+    });
+  }
+
+  Future<void> _createCustomForMissingItem() async {
+    final index = _reviewItems.indexWhere((item) => !_itemHasFood(item));
+    if (index < 0) return;
+    final item = _reviewItems[index];
+    final initialName = item['food_name']?.toString() ?? '';
+    final food = await context.push<FoodDetail>(
+      Uri(
+        path: '/foods/custom',
+        queryParameters: {
+          'name': initialName,
+          'meal_type': _mealType,
+          'return_to': 'quick_add',
+        },
+      ).toString(),
+    );
+    if (!mounted || food == null) return;
+    final grams = _asDouble(
+      item['effective_total_grams'] ?? item['total_grams'],
+      fallback: food.defaultServingG,
+    );
+    final preview = food.previewFor(
+      quantity: grams > 0 ? grams : food.defaultServingG,
+      unit: 'gram',
+      totalGrams: grams > 0 ? grams : food.defaultServingG,
+    );
+    setState(() {
+      _reviewItems[index] = {
+        ...item,
+        'food_id': food.id,
+        'food_name': food.name,
+        'matched_food_name': food.name,
+        'effective_total_grams': grams > 0 ? grams : food.defaultServingG,
+        '_preview_base_grams': grams > 0 ? grams : food.defaultServingG,
+        'nutrition_preview': {
+          'calories_kcal': preview.caloriesKcal,
+          'protein_g': preview.proteinG,
+          'carbs_g': preview.carbsG,
+          'fat_g': preview.fatG,
+        },
+      };
     });
   }
 

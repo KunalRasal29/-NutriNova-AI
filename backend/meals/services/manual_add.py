@@ -3,9 +3,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from foods.models import Food, FoodServing
+from foods.models import Food, FoodServing, UserPortionPreference
 from meals.models import MealLog, MealLogItem
 from meals.services import recompute_daily_summary
 from nutrition.calculations import calculate_food_snapshot, quantize_decimal
@@ -102,6 +103,12 @@ def normalize_manual_unit(value: str | None) -> str:
         "handfuls": "handful",
         "scoops": "scoop",
         "packets": "packet",
+        "roti": "piece",
+        "rotis": "piece",
+        "chapati": "piece",
+        "chapatis": "piece",
+        "phulka": "piece",
+        "phulkas": "piece",
     }
     normalized = unit_map.get(normalized, normalized)
     if normalized in MANUAL_QUANTITY_UNITS:
@@ -160,6 +167,7 @@ def calculate_manual_grams(
     quantity_value: Decimal,
     quantity_unit: str,
     total_grams: Decimal | None = None,
+    user=None,
 ) -> tuple[Decimal, FoodServing | None, list[str]]:
     warnings = []
     quantity_unit = normalize_manual_unit(quantity_unit)
@@ -173,6 +181,20 @@ def calculate_manual_grams(
         return quantize_decimal(quantity_value), None, warnings
     if quantity_unit == "ml":
         return quantize_decimal(quantity_value), None, warnings
+
+    if user is not None and getattr(user, "is_authenticated", False):
+        preference = UserPortionPreference.objects.filter(
+            user=user,
+            food=food,
+            unit=quantity_unit,
+        ).first()
+        if preference:
+            warnings.append("using your saved portion preference")
+            return (
+                quantize_decimal(quantity_value * preference.grams_per_unit),
+                None,
+                warnings,
+            )
 
     serving = find_serving_for_unit(food, quantity_unit)
     if serving:
@@ -204,6 +226,7 @@ def manual_food_preview(
     quantity_value: Decimal,
     quantity_unit: str,
     total_grams: Decimal | None = None,
+    user=None,
 ) -> dict:
     quantity_unit = normalize_manual_unit(quantity_unit)
     grams, serving, warnings = calculate_manual_grams(
@@ -211,6 +234,7 @@ def manual_food_preview(
         quantity_value=quantity_value,
         quantity_unit=quantity_unit,
         total_grams=total_grams,
+        user=user,
     )
     snapshot = calculate_food_snapshot(food, grams)
     nutrients = snapshot["nutrients_snapshot"]
@@ -233,6 +257,18 @@ def manual_food_preview(
         "nutrients_snapshot": nutrients,
         "source_confidence": snapshot["source_confidence"],
         "source_badge": food.source.source_type,
+        "verified": food.verified,
+        "data_classification": (
+            "user_custom"
+            if food.food_type == Food.FoodType.USER_CUSTOM
+            else (
+                "ai_estimate"
+                if food.source.source_type == "AI_ESTIMATE"
+                else ("official_verified" if food.verified else "official_unverified")
+            )
+        ),
+        "preparation_state": food.preparation_state,
+        "nutrition_basis": "per_100g_scaled_to_effective_grams",
         "warnings": warnings,
     }
 
@@ -265,6 +301,7 @@ def add_food_to_meal(user, validated_data: dict) -> tuple[MealLog, MealLogItem, 
         quantity_value=quantity_value,
         quantity_unit=quantity_unit,
         total_grams=total_grams,
+        user=user,
     )
     serving = None
     if preview["serving_id"]:
@@ -291,5 +328,56 @@ def add_food_to_meal(user, validated_data: dict) -> tuple[MealLog, MealLogItem, 
         source_confidence=preview["source_confidence"],
         user_confirmed=True,
     )
+    if (
+        total_grams is not None
+        and quantity_value > 0
+        and quantity_unit not in {"gram", "ml", "custom"}
+    ):
+        remember_portion_preference(
+            user=user,
+            food=food,
+            unit=quantity_unit,
+            grams_per_unit=quantize_decimal(total_grams / quantity_value),
+        )
     recompute_daily_summary(user, meal_log.date)
     return meal_log, item, preview
+
+
+def remember_portion_preference(
+    *,
+    user,
+    food: Food,
+    unit: str,
+    grams_per_unit: Decimal,
+) -> UserPortionPreference:
+    preference = (
+        UserPortionPreference.objects.select_for_update()
+        .filter(user=user, food=food, unit=unit)
+        .first()
+    )
+    if preference is None:
+        return UserPortionPreference.objects.create(
+            user=user,
+            food=food,
+            unit=unit,
+            grams_per_unit=grams_per_unit,
+            times_used=1,
+            last_used_at=timezone.now(),
+        )
+
+    total_uses = preference.times_used + 1
+    weighted_grams = (
+        preference.grams_per_unit * preference.times_used + grams_per_unit
+    ) / total_uses
+    preference.grams_per_unit = quantize_decimal(weighted_grams)
+    preference.times_used = total_uses
+    preference.last_used_at = timezone.now()
+    preference.save(
+        update_fields=(
+            "grams_per_unit",
+            "times_used",
+            "last_used_at",
+            "updated_at",
+        )
+    )
+    return preference

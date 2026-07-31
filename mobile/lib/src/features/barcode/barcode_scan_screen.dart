@@ -140,21 +140,13 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                   const SectionHeader(title: 'No product found'),
                   const SizedBox(height: NovaSpacing.sm),
                   const Text(
-                    'This barcode is not in the local food database yet. Create a custom food or sync Open Food Facts on the backend.',
+                    'This barcode was not found. If live Open Food Facts lookup is enabled, it was checked automatically. You can create a custom food instead.',
                   ),
                   const SizedBox(height: NovaSpacing.md),
                   NovaButton.primary(
                     label: 'Create custom food',
                     icon: Icons.add,
-                    onPressed: () => context.go(
-                      Uri(
-                        path: '/foods/custom',
-                        queryParameters: {
-                          'barcode': _barcode ?? '',
-                          'meal_type': _mealType,
-                        },
-                      ).toString(),
-                    ),
+                    onPressed: _createFromBarcode,
                   ),
                 ],
               ),
@@ -189,7 +181,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                 food: food,
                 grams: grams,
                 saving: _savingFoodId == food.id,
-                onOpen: () => context.go(
+                onOpen: () => context.push(
                   _withMealType('/foods/${food.id}', _mealType),
                 ),
                 onLog: grams <= 0
@@ -201,6 +193,26 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  Future<void> _createFromBarcode() async {
+    final food = await context.push<FoodDetail>(
+      Uri(
+        path: '/foods/custom',
+        queryParameters: {
+          'barcode': _barcode ?? '',
+          'meal_type': _mealType,
+          'return_to': 'barcode',
+        },
+      ).toString(),
+    );
+    if (!mounted || food == null) return;
+    await context.push(
+      Uri(
+        path: '/foods/${food.id}',
+        queryParameters: {'meal_type': _mealType},
+      ).toString(),
     );
   }
 
@@ -224,7 +236,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.toString();
+        _error = friendlyErrorMessage(error);
         _loading = false;
       });
     }
@@ -254,7 +266,9 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _savingFoodId = null);
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     }
   }
 }
@@ -319,6 +333,33 @@ class _BarcodeFoodCard extends StatelessWidget {
             verified: food.verified,
             classification: food.dataClassification,
           ),
+          if (food.preparationState != 'unspecified') ...[
+            const SizedBox(height: NovaSpacing.sm),
+            NovaBadge(
+              label: food.preparationState == 'as_sold'
+                  ? 'As sold / packaged'
+                  : food.preparationState,
+              icon: Icons.soup_kitchen_outlined,
+              color: NovaColors.blue,
+            ),
+          ],
+          if (food.allergens.isNotEmpty) ...[
+            const SizedBox(height: NovaSpacing.sm),
+            Text(
+              'Allergens: ${food.allergens.join(', ')}',
+              style: const TextStyle(
+                color: NovaColors.coral,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+          if (food.confidenceScore < 0.7) ...[
+            const SizedBox(height: NovaSpacing.sm),
+            const Text(
+              'Product data may be incomplete. Review the label and serving before logging.',
+              style: TextStyle(color: NovaColors.gold),
+            ),
+          ],
           const SizedBox(height: NovaSpacing.md),
           NutritionPreviewBar(
             caloriesKcal: food.preview.caloriesKcal * scale,

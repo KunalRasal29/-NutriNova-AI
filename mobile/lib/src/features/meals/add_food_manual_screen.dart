@@ -63,7 +63,7 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
           tooltip: 'Create custom food',
           icon: const Icon(Icons.add_circle_outline),
           onPressed: () =>
-              context.go(_withMealType('/foods/custom', _mealType)),
+              context.push(_withMealType('/foods/custom', _mealType)),
         ),
       ],
       body: ListView(
@@ -156,7 +156,7 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => context.go(
+                    onPressed: () => context.push(
                       _withMealType('/foods/${_selectedFood!.id}', _mealType),
                     ),
                     child: const Text('Details'),
@@ -241,7 +241,6 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                             mealType: _mealType,
                             totalGrams: _totalGramsForSave(
                               override: totalGrams,
-                              effectiveGrams: effectiveGrams,
                             ),
                           );
                       ref.invalidate(dashboardProvider);
@@ -271,12 +270,9 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
 
   double? _totalGramsForSave({
     required double? override,
-    required double effectiveGrams,
   }) {
     if (override != null && override > 0) return override;
-    if (_unit == 'gram') return null;
-    if (_unit == 'serving') return null;
-    return effectiveGrams;
+    return null;
   }
 
   MacroPreview _previewFor(FoodSummary food, double effectiveGrams) {
@@ -364,6 +360,17 @@ List<_UnitChoice> _unitChoicesFor(FoodSummary? food) {
     _UnitChoice(unit: 'serving', label: 'Serving', grams: defaultGrams),
   ];
 
+  if (name.contains('chapati') ||
+      name.contains('roti') ||
+      name.contains('phulka')) {
+    choices.add(
+      _UnitChoice(
+        unit: 'piece',
+        label: 'Chapati / roti',
+        grams: defaultGrams,
+      ),
+    );
+  }
   if (name.contains('egg') || serving.contains('egg')) {
     choices.add(const _UnitChoice(unit: 'egg', label: 'Egg', grams: 50));
   }
@@ -404,11 +411,46 @@ List<_UnitChoice> _unitChoicesFor(FoodSummary? food) {
       ),
     );
   }
+  if (name.contains('milk') ||
+      name.contains('juice') ||
+      name.contains('water') ||
+      name.contains('drink') ||
+      name.contains('soup')) {
+    choices.add(const _UnitChoice(unit: 'ml', label: 'Millilitres', grams: 1));
+    choices.add(const _UnitChoice(unit: 'glass', label: 'Glass', grams: 240));
+  }
+  if (name.contains('oil') ||
+      name.contains('ghee') ||
+      name.contains('sauce') ||
+      serving.contains('tablespoon')) {
+    choices.add(
+      const _UnitChoice(
+        unit: 'tablespoon',
+        label: 'Tablespoon',
+        grams: 15,
+      ),
+    );
+    choices.add(
+      const _UnitChoice(unit: 'teaspoon', label: 'Teaspoon', grams: 5),
+    );
+  }
+  if (food.brand.isNotEmpty || food.preparationState == 'as_sold') {
+    choices.add(
+      _UnitChoice(unit: 'packet', label: 'Packet', grams: defaultGrams),
+    );
+  }
 
   final seen = <String>{};
   return [
     for (final choice in choices)
-      if (seen.add(choice.unit)) choice,
+      if (seen.add(choice.unit))
+        _UnitChoice(
+          unit: choice.unit,
+          label: food.personalPortionGrams.containsKey(choice.unit)
+              ? '${choice.label} (your usual)'
+              : choice.label,
+          grams: food.personalPortionGrams[choice.unit] ?? choice.grams,
+        ),
   ];
 }
 
@@ -432,7 +474,16 @@ String _amountLabel({
   }
   if (choice.unit == 'gram') return '${gramsText}g total';
   final perUnit = _formatAmount(choice.grams);
-  return '$quantityText ${choice.label.toLowerCase()} x ${perUnit}g = ${gramsText}g';
+  final estimated = {
+    'bowl',
+    'cup',
+    'glass',
+    'tablespoon',
+    'teaspoon',
+  }.contains(choice.unit);
+  final suffix = estimated ? ' estimate — confirm grams if possible' : '';
+  return '$quantityText ${choice.label.toLowerCase()} x ${perUnit}g = '
+      '${gramsText}g$suffix';
 }
 
 String _formatAmount(double value) {

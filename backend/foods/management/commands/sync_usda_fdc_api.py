@@ -3,8 +3,6 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 
 from foods.importers import (
-    NUTRIENT_CODE_BY_FDC_ID,
-    NUTRIENT_CODE_BY_NAME,
     ImportResult,
     build_url,
     create_import_job,
@@ -20,6 +18,7 @@ from foods.importers import (
     upsert_food_serving,
 )
 from foods.models import Food, FoodNutrient
+from foods.services.nutrient_normalization import normalize_usda_nutrient
 from nutrition.models import NutritionDataSource
 
 
@@ -79,6 +78,14 @@ class Command(BaseCommand):
                         if detail.get("brandOwner")
                         else Food.FoodType.GENERIC
                     ),
+                    dataset_type={
+                        "Foundation": Food.DatasetType.USDA_FOUNDATION,
+                        "Survey (FNDDS)": Food.DatasetType.USDA_FNDDS,
+                        "SR Legacy": Food.DatasetType.USDA_SR_LEGACY,
+                        "Branded": Food.DatasetType.USDA_BRANDED,
+                        "Experimental": Food.DatasetType.USDA_EXPERIMENTAL,
+                    }.get(detail.get("dataType"), Food.DatasetType.UNKNOWN),
+                    dataset_release=str(detail.get("publicationDate") or ""),
                     country_code="US",
                     barcode=detail.get("gtinUpc") or "",
                     serving_description=detail.get("servingSizeUnit") or "",
@@ -102,14 +109,14 @@ class Command(BaseCommand):
                 nutrients = {}
                 for nutrient_row in detail.get("foodNutrients", []):
                     nutrient = nutrient_row.get("nutrient") or {}
-                    nutrient_id = str(nutrient.get("id") or "").strip()
-                    nutrient_name = str(nutrient.get("name") or "").lower()
-                    code = NUTRIENT_CODE_BY_FDC_ID.get(
-                        nutrient_id
-                    ) or NUTRIENT_CODE_BY_NAME.get(nutrient_name)
-                    amount = normalize_decimal(nutrient_row.get("amount"))
-                    if code and amount is not None:
-                        nutrients[code] = amount
+                    normalized = normalize_usda_nutrient(
+                        nutrient_id=str(nutrient.get("id") or "").strip(),
+                        name=str(nutrient.get("name") or ""),
+                        unit=str(nutrient.get("unitName") or ""),
+                        amount=nutrient_row.get("amount"),
+                    )
+                    if normalized is not None:
+                        nutrients[normalized.code] = normalized
                 upsert_food_nutrients(
                     food,
                     source,

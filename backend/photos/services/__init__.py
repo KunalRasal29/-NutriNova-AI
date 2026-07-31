@@ -318,7 +318,32 @@ def add_manual_food_to_analysis(analysis: PhotoAnalysis, validated_data: dict):
         is_user_corrected=True,
         added_manually=True,
     )
-    return update_item_preview_snapshot(detected)
+    update_item_preview_snapshot(detected)
+    return detected
+
+
+@transaction.atomic
+def split_detected_food(detected: PhotoDetectedFood, validated_items: list[dict]):
+    if detected.is_removed:
+        raise ValidationError("Restore the item before splitting it.")
+    detected.is_removed = True
+    detected.is_user_corrected = True
+    detected.correction_note = "Split into separate foods by user."
+    detected.save(
+        update_fields=[
+            "is_removed",
+            "is_user_corrected",
+            "correction_note",
+            "updated_at",
+        ]
+    )
+    children = []
+    for item in validated_items:
+        child = add_manual_food_to_analysis(detected.photo_analysis, item)
+        child.split_parent = detected
+        child.save(update_fields=["split_parent", "updated_at"])
+        children.append(child)
+    return children
 
 
 @transaction.atomic
@@ -342,6 +367,8 @@ def recalculate_analysis_preview(analysis: PhotoAnalysis):
 def confirm_analysis_as_meal(analysis: PhotoAnalysis, validated_data: dict) -> MealLog:
     if analysis.analysis_type != PhotoAnalysis.AnalysisType.MEAL_PHOTO:
         raise ValidationError("Only meal photo analyses can be confirmed as meals.")
+    if analysis.confirmed_meal_id:
+        return analysis.confirmed_meal
     if analysis.status not in {
         PhotoAnalysis.Status.NEEDS_REVIEW,
         PhotoAnalysis.Status.CONFIRMED,
@@ -407,11 +434,31 @@ def confirm_analysis_as_meal(analysis: PhotoAnalysis, validated_data: dict) -> M
             ),
             user_confirmed=True,
         )
+        if (
+            detected.user_total_grams is not None
+            and quantity
+            and quantity > 0
+            and unit
+            not in {
+                PhotoDetectedFood.QuantityUnit.GRAM,
+                PhotoDetectedFood.QuantityUnit.ML,
+                PhotoDetectedFood.QuantityUnit.CUSTOM,
+            }
+        ):
+            from meals.services.manual_add import remember_portion_preference
+
+            remember_portion_preference(
+                user=analysis.user,
+                food=food,
+                unit=unit,
+                grams_per_unit=quantize_decimal(grams / quantity),
+            )
         detected.user_confirmed = True
         detected.save(update_fields=["user_confirmed", "updated_at"])
 
     analysis.status = PhotoAnalysis.Status.CONFIRMED
-    analysis.save(update_fields=["status", "updated_at"])
+    analysis.confirmed_meal = meal_log
+    analysis.save(update_fields=["status", "confirmed_meal", "updated_at"])
     recompute_daily_summary(analysis.user, meal_log.date)
     return meal_log
 
@@ -453,27 +500,15 @@ def _apply_detection_corrections(analysis: PhotoAnalysis, item_payloads: list[di
 
 
 def get_or_create_label_source(label_scan: NutritionLabelScan):
-    if label_scan.barcode:
-        source_type = NutritionDataSource.SourceType.OPEN_FOOD_FACTS
-        defaults = {
-            "name": "Open Food Facts",
-            "license_name": "Open Database License",
-            "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
-            "citation": "Open Food Facts contributors. Open Food Facts database.",
-            "update_frequency": "Community updated continuously",
-            "reliability_score": Decimal("0.7500"),
-            "is_active": True,
-        }
-    else:
-        source_type = NutritionDataSource.SourceType.USER_CUSTOM
-        defaults = {
-            "name": "User Custom",
-            "license_name": "User provided",
-            "citation": "User-entered foods created inside NutriNova AI.",
-            "update_frequency": "User managed",
-            "reliability_score": Decimal("0.5000"),
-            "is_active": True,
-        }
+    source_type = NutritionDataSource.SourceType.USER_CUSTOM
+    defaults = {
+        "name": "User Custom",
+        "license_name": "User provided",
+        "citation": "User-confirmed nutrition label scan.",
+        "update_frequency": "User managed",
+        "reliability_score": Decimal("0.5000"),
+        "is_active": True,
+    }
     source, _ = NutritionDataSource.objects.get_or_create(
         source_type=source_type,
         defaults=defaults,
@@ -494,9 +529,7 @@ def confirm_label_as_food(analysis: PhotoAnalysis) -> Food:
         "description": "Created from a user-confirmed nutrition label scan.",
         "ingredients_text": label_scan.ingredients_text,
         "allergens": label_scan.allergens,
-        "food_type": (
-            Food.FoodType.BRANDED if label_scan.barcode else Food.FoodType.USER_CUSTOM
-        ),
+        "food_type": Food.FoodType.USER_CUSTOM,
         "country_code": "IN",
         "language_code": "en",
         "barcode": label_scan.barcode,
@@ -509,7 +542,7 @@ def confirm_label_as_food(analysis: PhotoAnalysis) -> Food:
     lookup = {
         "source": source,
         "external_id": (
-            f"label:{label_scan.barcode}"
+            f"label:{analysis.user_id}:{label_scan.barcode}"
             if label_scan.barcode
             else f"label-scan:{analysis.id}"
         ),

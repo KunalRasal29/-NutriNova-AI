@@ -192,7 +192,9 @@ docker compose run --rm backend python manage.py import_openfoodfacts_sample
 USDA FDC CSV downloads:
 
 ```bash
-docker compose run --rm backend python manage.py import_usda_fdc_csv --path /path/to/fdc_csv.zip
+docker compose run --rm backend python manage.py import_usda_fdc --path /path/to/fdc_csv.zip --dataset foundation --mode starter --release-version 2026-04
+docker compose run --rm backend python manage.py audit_food_database --apply
+docker compose run --rm backend python manage.py food_database_stats
 ```
 
 USDA FDC API:
@@ -208,6 +210,17 @@ Open Food Facts barcode lookup:
 OPENFOODFACTS_USER_AGENT="NutriNovaAI/0.1 (your_email@example.com)"
 docker compose run --rm backend python manage.py sync_openfoodfacts_barcode --barcode 8900000000011
 ```
+
+For optional mobile-triggered lookup when a barcode is not already stored,
+set both values in `.env` and restart the backend:
+
+```bash
+OPENFOODFACTS_USER_AGENT="NutriNovaAI/0.1 (your_email@example.com)"
+OPENFOODFACTS_LIVE_LOOKUP=true
+```
+
+Live lookup is off by default. It imports only the requested barcode, records an
+import job, and never downloads a large database during app startup.
 
 Indian foods CSV provided by project owner:
 
@@ -235,6 +248,9 @@ docker compose run --rm backend python manage.py import_indian_foods_csv --path 
 - Weight trend: `GET /api/body-metrics/trend/?days=30`
 
 Every food/nutrition response should include source, confidence, verification, and classification metadata. See [docs/data_attribution.md](docs/data_attribution.md).
+
+Custom-food estimates use a separate review and confirmation workflow. See
+[docs/custom_food_estimation.md](docs/custom_food_estimation.md).
 
 ## Working MVP Daily Loop
 

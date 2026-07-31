@@ -61,6 +61,8 @@ class PhotoDetectedFoodSerializer(serializers.ModelSerializer):
             "nutrition_preview_snapshot",
             "added_manually",
             "reasoning_short",
+            "split_parent",
+            "eaten_percentage",
         )
         read_only_fields = fields
 
@@ -79,6 +81,25 @@ class NutritionLabelScanSerializer(serializers.ModelSerializer):
             "allergens",
             "confidence_score",
         )
+        read_only_fields = ("id", "confidence_score")
+
+    def validate_parsed_nutrients(self, value):
+        allowed = {
+            "calories",
+            "calories_kcal",
+            "protein_g",
+            "carbs_g",
+            "fat_g",
+            "fiber_g",
+            "sugar_g",
+            "sodium_mg",
+        }
+        invalid = set(value) - allowed
+        if invalid:
+            raise serializers.ValidationError(
+                f"Unsupported nutrients: {', '.join(sorted(invalid))}."
+            )
+        return value
 
 
 class PhotoAnalysisDetailSerializer(serializers.ModelSerializer):
@@ -212,6 +233,13 @@ class PhotoDetectedFoodUpdateSerializer(serializers.Serializer):
     )
     is_removed = serializers.BooleanField(required=False)
     correction_note = serializers.CharField(required=False, allow_blank=True)
+    eaten_percentage = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        min_value=0,
+        max_value=100,
+        required=False,
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -248,6 +276,31 @@ class ManualPhotoFoodAddSerializer(serializers.Serializer):
         request = self.context.get("request")
         if request:
             self.fields["food_id"].queryset = visible_foods_for_user(request.user)
+
+
+class SplitDetectedFoodItemSerializer(ManualPhotoFoodAddSerializer):
+    pass
+
+
+class SplitDetectedFoodSerializer(serializers.Serializer):
+    items = SplitDetectedFoodItemSerializer(many=True, min_length=2)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if request:
+            self.fields["items"].child.fields[
+                "food_id"
+            ].queryset = visible_foods_for_user(request.user)
+
+
+class EatenPercentageSerializer(serializers.Serializer):
+    eaten_percentage = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        min_value=0,
+        max_value=100,
+    )
 
 
 class PhotoReviewResponseSerializer(serializers.Serializer):

@@ -1,5 +1,17 @@
+import 'package:dio/dio.dart';
+
 import '../api/api_client.dart';
 import '../models/app_models.dart';
+
+class _FoodSearchCacheEntry {
+  const _FoodSearchCacheEntry(this.page, this.savedAt);
+
+  final FoodSearchPage page;
+  final DateTime savedAt;
+
+  bool get isFresh =>
+      DateTime.now().difference(savedAt) < const Duration(seconds: 90);
+}
 
 abstract class NutritionRepository {
   Future<DashboardSnapshot> dashboard();
@@ -9,9 +21,17 @@ abstract class NutritionRepository {
     required double weightKg,
     DateTime? recordedOn,
   });
+  Future<NutritionTargetPlan> nutritionTargets();
+  Future<NutritionTargetPlan> estimateNutritionTargets();
+  Future<NutritionTargetPlan> applyEstimatedNutritionTargets();
+  Future<NutritionTargetPlan> updateNutritionTargets(
+    Map<String, dynamic> payload,
+  );
   Future<List<FoodSummary>> searchFoods(String query);
+  Future<FoodSearchPage> searchFoodsAdvanced(FoodSearchRequest request);
   Future<List<FoodSummary>> recentFoods();
   Future<List<FoodSummary>> frequentFoods();
+  Future<List<FoodSummary>> usualFoods(String mealType);
   Future<List<FoodSummary>> favoriteFoods();
   Future<List<FoodSummary>> myFoods();
   Future<void> setFoodFavorite({
@@ -21,6 +41,7 @@ abstract class NutritionRepository {
   Future<List<FoodSummary>> lookupBarcode(String barcode);
   Future<FoodDetail> foodDetail(String foodId);
   Future<List<MealLogSummary>> mealsForDate(DateTime date);
+  Future<void> copyYesterday(DateTime targetDate);
   Future<MacroPreview> manualFoodPreview({
     required String foodId,
     required double quantity,
@@ -45,6 +66,30 @@ abstract class NutritionRepository {
   Future<Map<String, dynamic>> quickAdd(String text, String mealType);
   Future<void> confirmQuickAdd(Map<String, dynamic> payload);
   Future<FoodDetail> createCustomFood(Map<String, dynamic> payload);
+  Future<List<FoodDetail>> customFoods();
+  Future<CustomFoodEstimate> estimateCustomFood(Map<String, dynamic> payload);
+  Future<FoodDetail> customFoodDetail(String foodId);
+  Future<FoodDetail> updateCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  );
+  Future<CustomFoodEstimate> reEstimateCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  );
+  Future<FoodDetail> confirmCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  );
+  Future<List<Map<String, dynamic>>> customFoodHistory(String foodId);
+  Future<void> logCustomFood(
+    String foodId, {
+    required String mealType,
+    double quantity = 1,
+    String unit = 'serving',
+    double? totalGrams,
+  });
+  Future<void> archiveCustomFood(String foodId);
   Future<Map<String, dynamic>> createRecipe(Map<String, dynamic> payload);
   Future<Map<String, dynamic>> calculateRecipe(String recipeId);
   Future<void> logRecipeAsMeal({
@@ -91,12 +136,94 @@ abstract class NutritionRepository {
     double? totalGrams,
   });
   Future<void> confirmPhotoMeal(String analysisId, String mealType);
+  Future<PhotoReview> applyEatenPercentage(
+    String detectedFoodId,
+    double percentage,
+  ) async =>
+      photoReview('mock-analysis');
+  Future<PhotoReview> splitPhotoFood(
+    String detectedFoodId,
+    List<Map<String, dynamic>> items,
+  ) async =>
+      photoReview('mock-analysis');
+  Future<NutritionLabelReview> uploadNutritionLabel({
+    required String fileName,
+    required List<int> bytes,
+  }) async =>
+      const NutritionLabelReview(
+        analysisId: 'mock-label',
+        status: 'needs_review',
+        imageUrl: '',
+        productName: 'Sample protein bar',
+        brand: 'Friends Beta',
+        servingSize: '1 bar (50 g)',
+        barcode: '',
+        nutrients: {'calories': 210, 'protein_g': 20},
+        ingredients: 'Sample ingredients',
+        allergens: ['milk'],
+        confidence: 0.84,
+      );
+  Future<NutritionLabelReview> nutritionLabelReview(String analysisId) =>
+      uploadNutritionLabel(fileName: 'mock.jpg', bytes: const []);
+  Future<FoodDetail> confirmNutritionLabel(
+    String analysisId,
+    Map<String, dynamic> payload,
+  ) =>
+      createCustomFood(payload);
+  Future<Map<String, dynamic>> dailyTracking() async => const {
+        'water_ml': 0,
+        'water_target_ml': 2500,
+        'steps': 0,
+        'duration_minutes': 0,
+        'calories_burned': 0,
+        'activities': <dynamic>[],
+      };
+  Future<void> addWater(int amountMl) async {}
+  Future<void> addActivity(Map<String, dynamic> payload) async {}
+  Future<Map<String, dynamic>> reminderPreferences() async => const {};
+  Future<void> updateReminderPreferences(Map<String, dynamic> payload) async {}
+  Future<Map<String, dynamic>> weeklyBetaReport() async => const {};
+  Future<List<Map<String, dynamic>>> friendGroups() async => const [];
+  Future<Map<String, dynamic>> createFriendGroup(String name) async => const {};
+  Future<Map<String, dynamic>> joinFriendGroup(String inviteCode) async =>
+      const {};
+  Future<Map<String, dynamic>> createGroupChallenge(
+    String groupId,
+    Map<String, dynamic> payload,
+  ) async =>
+      const {};
+  Future<Map<String, dynamic>> checkGroupChallenge(
+    String groupId,
+    String challengeId,
+    int count,
+  ) async =>
+      const {};
+  Future<Map<String, dynamic>> addGroupGroceryItem(
+    String groupId,
+    Map<String, dynamic> payload,
+  ) async =>
+      const {};
+  Future<Map<String, dynamic>> updateGroupGroceryItem(
+    String itemId,
+    Map<String, dynamic> payload,
+  ) async =>
+      const {};
+  Future<List<Map<String, dynamic>>> recipes() async => const [];
+  Future<Map<String, dynamic>> shareGroupRecipe(
+    String groupId,
+    String recipeId,
+  ) async =>
+      const {};
 }
 
 class ApiNutritionRepository implements NutritionRepository {
   ApiNutritionRepository(this._apiClient);
 
   final ApiClient _apiClient;
+  final Map<String, List<FoodSummary>> _foodListCache = {};
+  final Map<String, FoodDetail> _foodDetailCache = {};
+  final Map<String, _FoodSearchCacheEntry> _foodSearchCache = {};
+  CancelToken? _activeFoodSearch;
 
   @override
   Future<DashboardSnapshot> dashboard() async {
@@ -108,6 +235,7 @@ class ApiNutritionRepository implements NutritionRepository {
     final habits = await todayHabits();
     final mealLogs = await mealsForDate(today);
     final bodyTrend = await bodyMetricTrend();
+    final tracking = await dailyTracking();
     final meals = [
       for (final log in mealLogs)
         for (final item in log.items) item,
@@ -117,6 +245,12 @@ class ApiNutritionRepository implements NutritionRepository {
         data['daily_target_progress'] as Map<String, dynamic>? ?? {};
     final caloriesTarget =
         targetProgress['calories_kcal'] as Map<String, dynamic>? ?? {};
+    double targetFor(String code) {
+      final progress =
+          targetProgress[code] as Map<String, dynamic>? ?? const {};
+      return _asDouble(progress['target']);
+    }
+
     final micronutrients = _doubleMap(data['micronutrients']);
     return DashboardSnapshot(
       consumedCalories: _asDouble(data['calories_kcal']),
@@ -125,15 +259,25 @@ class ApiNutritionRepository implements NutritionRepository {
       carbsG: _asDouble(data['carbs_g']),
       fatG: _asDouble(data['fat_g']),
       fiberG: _asDouble(data['fiber_g']),
+      targetProteinG: targetFor('protein_g'),
+      targetCarbsG: targetFor('carbs_g'),
+      targetFatG: targetFor('fat_g'),
+      targetFiberG: targetFor('fiber_g'),
+      targetWaterMl: targetFor('water_ml'),
       sugarG: _asDouble(data['sugar_g']),
       sodiumMg: _asDouble(data['sodium_mg']),
       micronutrients: micronutrients,
-      waterCompleted: habits
-          .where((habit) => habit.unit == 'glasses')
-          .fold<int>(0, (sum, habit) => sum + habit.completedCount),
-      waterTarget: habits
-          .where((habit) => habit.unit == 'glasses')
-          .fold<int>(0, (sum, habit) => sum + habit.targetCount),
+      waterMl: _asDouble(tracking['water_ml']),
+      waterCompleted: (_asDouble(tracking['water_ml']) / 250).round(),
+      waterTarget: (_asDouble(
+                tracking['water_target_ml'],
+                fallback: 2500,
+              ) /
+              250)
+          .round(),
+      steps: _asDouble(tracking['steps']).round(),
+      workoutMinutes: _asDouble(tracking['duration_minutes']).round(),
+      exerciseCalories: _asDouble(tracking['calories_burned']),
       meals: meals,
       habits: habits,
       weightTrend: bodyTrend.weights,
@@ -192,16 +336,77 @@ class ApiNutritionRepository implements NutritionRepository {
   }
 
   @override
-  Future<List<FoodSummary>> searchFoods(String query) async {
-    final response = await _apiClient.get(
-      '/api/foods/search/',
-      queryParameters: {'q': query},
+  Future<NutritionTargetPlan> nutritionTargets() async {
+    final response = await _apiClient.get('/api/nutrition/targets/');
+    return NutritionTargetPlan.fromJson(
+      response.data as Map<String, dynamic>,
     );
-    final data = response.data as Map<String, dynamic>;
-    final results = data['results'] as List<dynamic>? ?? const [];
-    return results
-        .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
-        .toList();
+  }
+
+  @override
+  Future<NutritionTargetPlan> estimateNutritionTargets() async {
+    final response = await _apiClient.get('/api/nutrition/targets/estimate/');
+    return NutritionTargetPlan.fromJson(
+      response.data as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<NutritionTargetPlan> applyEstimatedNutritionTargets() async {
+    final response = await _apiClient.post(
+      '/api/nutrition/targets/estimate/',
+      data: {'confirm': true},
+    );
+    return NutritionTargetPlan.fromJson(
+      response.data as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<NutritionTargetPlan> updateNutritionTargets(
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.patch(
+      '/api/nutrition/targets/',
+      data: payload,
+    );
+    return NutritionTargetPlan.fromJson(
+      response.data as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<List<FoodSummary>> searchFoods(String query) async {
+    final page = await searchFoodsAdvanced(FoodSearchRequest(query: query));
+    return page.items;
+  }
+
+  @override
+  Future<FoodSearchPage> searchFoodsAdvanced(FoodSearchRequest request) async {
+    final key = request.cacheKey;
+    final cached = _foodSearchCache[key];
+    if (cached != null && cached.isFresh) return cached.page;
+    _activeFoodSearch?.cancel('Replaced by a newer food search.');
+    final cancelToken = CancelToken();
+    _activeFoodSearch = cancelToken;
+    try {
+      final response = await _apiClient.get(
+        '/api/foods/search/',
+        queryParameters: request.queryParameters,
+        cancelToken: cancelToken,
+      );
+      final data = response.data as Map<String, dynamic>;
+      final page = FoodSearchPage.fromJson(data, page: request.page);
+      _foodSearchCache[key] = _FoodSearchCacheEntry(page, DateTime.now());
+      return page;
+    } on ApiException {
+      if (cached != null) return cached.page;
+      rethrow;
+    } finally {
+      if (identical(_activeFoodSearch, cancelToken)) {
+        _activeFoodSearch = null;
+      }
+    }
   }
 
   @override
@@ -212,6 +417,17 @@ class ApiNutritionRepository implements NutritionRepository {
       _foodList('/api/foods/frequent/');
 
   @override
+  Future<List<FoodSummary>> usualFoods(String mealType) async {
+    final response = await _apiClient.get(
+      '/api/foods/frequent/',
+      queryParameters: {'meal_type': mealType},
+    );
+    return _extractList(response.data)
+        .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
   Future<List<FoodSummary>> favoriteFoods() =>
       _foodList('/api/foods/favorites/');
 
@@ -219,10 +435,18 @@ class ApiNutritionRepository implements NutritionRepository {
   Future<List<FoodSummary>> myFoods() => _foodList('/api/foods/my-foods/');
 
   Future<List<FoodSummary>> _foodList(String path) async {
-    final response = await _apiClient.get(path);
-    return _extractList(response.data)
-        .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
-        .toList();
+    try {
+      final response = await _apiClient.get(path);
+      final foods = _extractList(response.data)
+          .map((item) => FoodSummary.fromJson(item as Map<String, dynamic>))
+          .toList();
+      _foodListCache[path] = foods;
+      return foods;
+    } on ApiException {
+      final cached = _foodListCache[path];
+      if (cached != null) return cached;
+      rethrow;
+    }
   }
 
   @override
@@ -240,7 +464,7 @@ class ApiNutritionRepository implements NutritionRepository {
   @override
   Future<List<FoodSummary>> lookupBarcode(String barcode) async {
     final response = await _apiClient.get(
-      '/api/foods/search/',
+      '/api/foods/barcode-lookup/',
       queryParameters: {'barcode': barcode},
     );
     final data = response.data as Map<String, dynamic>;
@@ -252,8 +476,16 @@ class ApiNutritionRepository implements NutritionRepository {
 
   @override
   Future<FoodDetail> foodDetail(String foodId) async {
-    final response = await _apiClient.get('/api/foods/$foodId/');
-    return FoodDetail.fromJson(response.data as Map<String, dynamic>);
+    try {
+      final response = await _apiClient.get('/api/foods/$foodId/');
+      final food = FoodDetail.fromJson(response.data as Map<String, dynamic>);
+      _foodDetailCache[foodId] = food;
+      return food;
+    } on ApiException {
+      final cached = _foodDetailCache[foodId];
+      if (cached != null) return cached;
+      rethrow;
+    }
   }
 
   @override
@@ -265,6 +497,14 @@ class ApiNutritionRepository implements NutritionRepository {
     return _extractList(response.data)
         .map((item) => MealLogSummary.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  @override
+  Future<void> copyYesterday(DateTime targetDate) async {
+    await _apiClient.post(
+      '/api/meals/copy-yesterday/',
+      data: {'date': _dateString(targetDate)},
+    );
   }
 
   @override
@@ -354,7 +594,123 @@ class ApiNutritionRepository implements NutritionRepository {
   @override
   Future<FoodDetail> createCustomFood(Map<String, dynamic> payload) async {
     final response = await _apiClient.post('/api/foods/custom/', data: payload);
+    final food = FoodDetail.fromJson(response.data as Map<String, dynamic>);
+    _foodDetailCache[food.id] = food;
+    _foodListCache.clear();
+    _foodSearchCache.clear();
+    return food;
+  }
+
+  @override
+  Future<List<FoodDetail>> customFoods() async {
+    final response = await _apiClient.get(
+      '/api/foods/custom/',
+      queryParameters: {'page_size': 100},
+    );
+    return _extractList(response.data)
+        .map((item) => FoodDetail.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<CustomFoodEstimate> estimateCustomFood(
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/foods/custom/estimate/',
+      data: payload,
+    );
+    return CustomFoodEstimate.fromJson(
+      response.data as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<FoodDetail> customFoodDetail(String foodId) async {
+    final response = await _apiClient.get('/api/foods/custom/$foodId/');
     return FoodDetail.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FoodDetail> updateCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.patch(
+      '/api/foods/custom/$foodId/',
+      data: payload,
+    );
+    final food = FoodDetail.fromJson(response.data as Map<String, dynamic>);
+    _foodDetailCache[foodId] = food;
+    _foodListCache.clear();
+    _foodSearchCache.clear();
+    return food;
+  }
+
+  @override
+  Future<CustomFoodEstimate> reEstimateCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/foods/custom/$foodId/re-estimate/',
+      data: payload,
+    );
+    _foodDetailCache.remove(foodId);
+    return CustomFoodEstimate.fromJson(
+      response.data as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<FoodDetail> confirmCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/foods/custom/$foodId/confirm/',
+      data: payload,
+    );
+    final food = FoodDetail.fromJson(response.data as Map<String, dynamic>);
+    _foodDetailCache[foodId] = food;
+    _foodListCache.clear();
+    _foodSearchCache.clear();
+    return food;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> customFoodHistory(String foodId) async {
+    final response = await _apiClient.get(
+      '/api/foods/custom/$foodId/history/',
+    );
+    return (response.data as List<dynamic>)
+        .map((item) => item as Map<String, dynamic>)
+        .toList();
+  }
+
+  @override
+  Future<void> logCustomFood(
+    String foodId, {
+    required String mealType,
+    double quantity = 1,
+    String unit = 'serving',
+    double? totalGrams,
+  }) async {
+    await _apiClient.post(
+      '/api/foods/custom/$foodId/log/',
+      data: {
+        'date': _dateString(DateTime.now()),
+        'meal_type': mealType,
+        'quantity_value': quantity,
+        'quantity_unit': unit,
+        if (totalGrams != null) 'total_grams': totalGrams,
+      },
+    );
+  }
+
+  @override
+  Future<void> archiveCustomFood(String foodId) async {
+    await updateCustomFood(foodId, {'status': 'archived'});
   }
 
   @override
@@ -583,6 +939,211 @@ class ApiNutritionRepository implements NutritionRepository {
       },
     );
   }
+
+  @override
+  Future<PhotoReview> applyEatenPercentage(
+    String detectedFoodId,
+    double percentage,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/photos/detected-foods/$detectedFoodId/eaten-percentage/',
+      data: {'eaten_percentage': percentage},
+    );
+    return PhotoReview.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<PhotoReview> splitPhotoFood(
+    String detectedFoodId,
+    List<Map<String, dynamic>> items,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/photos/detected-foods/$detectedFoodId/split/',
+      data: {'items': items},
+    );
+    return PhotoReview.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<NutritionLabelReview> uploadNutritionLabel({
+    required String fileName,
+    required List<int> bytes,
+  }) async {
+    final response = await _apiClient.uploadBytes(
+      '/api/photos/analyze-label/',
+      fieldName: 'image',
+      fileName: fileName,
+      bytes: bytes,
+    );
+    final data = response.data as Map<String, dynamic>;
+    final id = data['id']?.toString() ?? '';
+    if (id.isEmpty) return NutritionLabelReview.fromJson(data);
+    return _pollLabelReview(id);
+  }
+
+  @override
+  Future<NutritionLabelReview> nutritionLabelReview(String analysisId) async {
+    final response = await _apiClient.get('/api/photos/analyses/$analysisId/');
+    return NutritionLabelReview.fromJson(
+      response.data as Map<String, dynamic>,
+    );
+  }
+
+  Future<NutritionLabelReview> _pollLabelReview(String analysisId) async {
+    var review = await nutritionLabelReview(analysisId);
+    for (var attempt = 0; attempt < 8 && review.isProcessing; attempt += 1) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      review = await nutritionLabelReview(analysisId);
+    }
+    return review;
+  }
+
+  @override
+  Future<FoodDetail> confirmNutritionLabel(
+    String analysisId,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/photos/analyses/$analysisId/confirm-label-as-food/',
+      data: payload,
+    );
+    final data = response.data as Map<String, dynamic>;
+    return FoodDetail.fromJson(data['food'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Map<String, dynamic>> dailyTracking() async {
+    final response = await _apiClient.get('/api/tracking/today/');
+    return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<void> addWater(int amountMl) async {
+    await _apiClient.post(
+      '/api/tracking/water/',
+      data: {'amount_ml': amountMl, 'entry_date': _dateString(DateTime.now())},
+    );
+  }
+
+  @override
+  Future<void> addActivity(Map<String, dynamic> payload) async {
+    await _apiClient.post(
+      '/api/tracking/activities/',
+      data: {'activity_date': _dateString(DateTime.now()), ...payload},
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> reminderPreferences() async {
+    final response = await _apiClient.get('/api/tracking/reminders/');
+    return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<void> updateReminderPreferences(Map<String, dynamic> payload) async {
+    await _apiClient.patch('/api/tracking/reminders/', data: payload);
+  }
+
+  @override
+  Future<Map<String, dynamic>> weeklyBetaReport() async {
+    final response = await _apiClient.get('/api/analytics/weekly-report/');
+    return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> friendGroups() async {
+    final response = await _apiClient.get('/api/community/groups/');
+    return (response.data as List<dynamic>)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> createFriendGroup(String name) async {
+    final response = await _apiClient.post(
+      '/api/community/groups/',
+      data: {'name': name},
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<Map<String, dynamic>> joinFriendGroup(String inviteCode) async {
+    final response = await _apiClient.post(
+      '/api/community/groups/join/',
+      data: {'invite_code': inviteCode},
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<Map<String, dynamic>> createGroupChallenge(
+    String groupId,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/community/groups/$groupId/challenge/',
+      data: payload,
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<Map<String, dynamic>> checkGroupChallenge(
+    String groupId,
+    String challengeId,
+    int count,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/community/groups/$groupId/challenge/$challengeId/check/',
+      data: {'completed_count': count},
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<Map<String, dynamic>> addGroupGroceryItem(
+    String groupId,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/community/groups/$groupId/grocery/',
+      data: payload,
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateGroupGroceryItem(
+    String itemId,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _apiClient.patch(
+      '/api/community/grocery-items/$itemId/',
+      data: payload,
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> recipes() async {
+    final response = await _apiClient.get('/api/recipes/');
+    return _extractList(response.data)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> shareGroupRecipe(
+    String groupId,
+    String recipeId,
+  ) async {
+    final response = await _apiClient.post(
+      '/api/community/groups/$groupId/recipes/',
+      data: {'recipe_id': recipeId},
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
 }
 
 double _asDouble(Object? value, {double fallback = 0}) {
@@ -682,7 +1243,7 @@ double _mockServingGrams(String foodId) {
   }
 }
 
-class MockNutritionRepository implements NutritionRepository {
+class MockNutritionRepository extends NutritionRepository {
   static const _foods = [
     FoodSummary(
       id: 'egg',
@@ -805,6 +1366,11 @@ class MockNutritionRepository implements NutritionRepository {
       carbsG: 168,
       fatG: 48,
       fiberG: 24,
+      targetProteinG: 115,
+      targetCarbsG: 270,
+      targetFatG: 70,
+      targetFiberG: 30,
+      targetWaterMl: 2600,
       sugarG: 34,
       sodiumMg: 1180,
       micronutrients: const {
@@ -1011,6 +1577,38 @@ class MockNutritionRepository implements NutritionRepository {
   }) async {}
 
   @override
+  Future<NutritionTargetPlan> nutritionTargets() async {
+    return _mockNutritionTargetPlan();
+  }
+
+  @override
+  Future<NutritionTargetPlan> estimateNutritionTargets() async {
+    return _mockNutritionTargetPlan(requiresConfirmation: true);
+  }
+
+  @override
+  Future<NutritionTargetPlan> applyEstimatedNutritionTargets() async {
+    return _mockNutritionTargetPlan();
+  }
+
+  @override
+  Future<NutritionTargetPlan> updateNutritionTargets(
+    Map<String, dynamic> payload,
+  ) async {
+    return NutritionTargetPlan(
+      caloriesKcal: _asDouble(payload['calories_kcal'], fallback: 2200),
+      proteinG: _asDouble(payload['protein_g'], fallback: 115),
+      carbsG: _asDouble(payload['carbs_g'], fallback: 270),
+      fatG: _asDouble(payload['fat_g'], fallback: 70),
+      fiberG: _asDouble(payload['fiber_g'], fallback: 30),
+      waterMl: _asDouble(payload['water_ml'], fallback: 2600),
+      method: 'user_custom',
+      disclaimer: 'Editable wellness estimates, not medical advice.',
+      customized: true,
+    );
+  }
+
+  @override
   Future<List<FoodSummary>> searchFoods(String query) async {
     await Future<void>.delayed(const Duration(milliseconds: 250));
     final normalized = query.toLowerCase();
@@ -1021,6 +1619,41 @@ class MockNutritionRepository implements NutritionRepository {
   }
 
   @override
+  Future<FoodSearchPage> searchFoodsAdvanced(FoodSearchRequest request) async {
+    var foods = await searchFoods(request.query);
+    if (request.foodType.isNotEmpty) {
+      foods = foods.where((food) {
+        if (request.foodType == 'custom') {
+          return food.dataClassification == 'user_custom';
+        }
+        return request.foodType == 'branded'
+            ? food.brand.isNotEmpty
+            : food.dataClassification != 'user_custom' && food.brand.isEmpty;
+      }).toList();
+    }
+    if (request.verified != null) {
+      foods = foods.where((food) => food.verified == request.verified).toList();
+    }
+    if (request.preparationState.isNotEmpty) {
+      foods = foods
+          .where(
+            (food) => food.preparationState == request.preparationState,
+          )
+          .toList();
+    }
+    final start = (request.page - 1) * request.pageSize;
+    final items = start >= foods.length
+        ? const <FoodSummary>[]
+        : foods.skip(start).take(request.pageSize).toList();
+    return FoodSearchPage(
+      items: items,
+      count: foods.length,
+      page: request.page,
+      hasMore: start + items.length < foods.length,
+    );
+  }
+
+  @override
   Future<List<FoodSummary>> recentFoods() async {
     return _foods.take(4).toList();
   }
@@ -1028,6 +1661,11 @@ class MockNutritionRepository implements NutritionRepository {
   @override
   Future<List<FoodSummary>> frequentFoods() async {
     return _foods.take(5).toList();
+  }
+
+  @override
+  Future<List<FoodSummary>> usualFoods(String mealType) async {
+    return _foods.take(3).toList();
   }
 
   @override
@@ -1182,6 +1820,9 @@ class MockNutritionRepository implements NutritionRepository {
   }
 
   @override
+  Future<void> copyYesterday(DateTime targetDate) async {}
+
+  @override
   Future<MacroPreview> manualFoodPreview({
     required String foodId,
     required double quantity,
@@ -1268,6 +1909,123 @@ class MockNutritionRepository implements NutritionRepository {
       isFavorite: false,
     );
   }
+
+  @override
+  Future<List<FoodDetail>> customFoods() async {
+    final foods = await myFoods();
+    return Future.wait(foods.map((food) => foodDetail(food.id)));
+  }
+
+  @override
+  Future<CustomFoodEstimate> estimateCustomFood(
+    Map<String, dynamic> payload,
+  ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    final grams = _asDouble(payload['serving_weight_g'], fallback: 100);
+    final scale = grams / 100;
+    return CustomFoodEstimate.fromJson({
+      'normalized_food_name': payload['food_name'] ?? 'custom food',
+      'suggested_nutrients': {
+        'calories_kcal': 180 * scale,
+        'protein_g': 12 * scale,
+        'carbs_g': 22 * scale,
+        'fat_g': 6 * scale,
+        'fiber_g': 3 * scale,
+        'sugar_g': 4 * scale,
+        'sodium_mg': 140 * scale,
+      },
+      'estimated_range': {
+        'calories_kcal': {
+          'min': 160 * scale,
+          'likely': 180 * scale,
+          'max': 210 * scale,
+        },
+      },
+      'reference_matches': [
+        {
+          'food_id': 'mock-reference',
+          'name': 'Similar trusted food',
+          'preparation_state': payload['preparation_method'] ?? 'prepared',
+          'source': {
+            'name': 'USDA FoodData Central',
+            'source_type': 'USDA_FDC',
+          },
+          'source_badge': 'USDA_FDC',
+          'name_match_score': 0.88,
+        },
+      ],
+      'source_badges': ['USDA_FDC'],
+      'confidence': 0.82,
+      'warnings': <String>[],
+      'can_estimate': true,
+      'requires_review': true,
+      'message': 'Review and edit every value before confirming.',
+      'calculated_calories_from_macros': 190 * scale,
+      'accuracy_notice':
+          'This is a database-based estimate, not a laboratory measurement.',
+      'estimation_method': 'database_matches',
+    });
+  }
+
+  @override
+  Future<FoodDetail> customFoodDetail(String foodId) async {
+    try {
+      return await foodDetail(foodId);
+    } catch (_) {
+      return createCustomFood({
+        'name': 'Mock custom food',
+        'serving_name': '1 serving',
+        'serving_grams': 100,
+      });
+    }
+  }
+
+  @override
+  Future<FoodDetail> updateCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  ) {
+    return customFoodDetail(foodId);
+  }
+
+  @override
+  Future<CustomFoodEstimate> reEstimateCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  ) {
+    return estimateCustomFood({
+      'food_name': payload['food_name'] ?? 'Mock custom food',
+      'serving_weight_g': payload['serving_weight_g'] ?? 100,
+      ...payload,
+    });
+  }
+
+  @override
+  Future<FoodDetail> confirmCustomFood(
+    String foodId,
+    Map<String, dynamic> payload,
+  ) {
+    return customFoodDetail(foodId);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> customFoodHistory(String foodId) async {
+    return const [
+      {'version': 1, 'event': 'created', 'status': 'confirmed'},
+    ];
+  }
+
+  @override
+  Future<void> logCustomFood(
+    String foodId, {
+    required String mealType,
+    double quantity = 1,
+    String unit = 'serving',
+    double? totalGrams,
+  }) async {}
+
+  @override
+  Future<void> archiveCustomFood(String foodId) async {}
 
   @override
   Future<Map<String, dynamic>> createRecipe(
@@ -1481,4 +2239,23 @@ class MockNutritionRepository implements NutritionRepository {
 
   @override
   Future<void> confirmPhotoMeal(String analysisId, String mealType) async {}
+}
+
+NutritionTargetPlan _mockNutritionTargetPlan({
+  bool requiresConfirmation = false,
+}) {
+  return NutritionTargetPlan(
+    caloriesKcal: 2200,
+    proteinG: 115,
+    carbsG: 270,
+    fatG: 70,
+    fiberG: 30,
+    waterMl: 2600,
+    method: 'mifflin_st_jeor_wellness_estimate',
+    disclaimer: 'Editable wellness estimates, not medical advice.',
+    assumptions: const [
+      'Activity and goal selections influence the calorie estimate.',
+    ],
+    requiresConfirmation: requiresConfirmation,
+  );
 }

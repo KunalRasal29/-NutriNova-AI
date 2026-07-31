@@ -54,10 +54,24 @@ class HomeDashboardScreen extends ConsumerWidget {
               _WeightTrend(snapshot: data),
               const SizedBox(height: NovaSpacing.lg),
               NovaCard(
+                gradient: NovaColors.heroGradient,
+                accentColor: NovaColors.mint,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.auto_awesome, color: NovaColors.mint),
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        gradient: NovaColors.premiumGradient,
+                        borderRadius: BorderRadius.circular(NovaRadius.sm),
+                        boxShadow: NovaShadows.glow(NovaColors.mint),
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome,
+                        color: Colors.white,
+                      ),
+                    ),
                     const SizedBox(width: NovaSpacing.md),
                     Expanded(
                       child: Text(
@@ -72,7 +86,7 @@ class HomeDashboardScreen extends ConsumerWidget {
           ),
         ),
         error: (error, _) => ErrorPanel(
-          message: error.toString(),
+          message: friendlyErrorMessage(error),
           onRetry: () => ref.invalidate(dashboardProvider),
         ),
         loading: () => const LoadingList(),
@@ -89,41 +103,79 @@ class _GreetingHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const CircleAvatar(
-          radius: 23,
-          backgroundColor: NovaColors.violet,
-          child: Icon(Icons.person, color: Colors.white),
-        ),
-        const SizedBox(width: NovaSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'NutriNova AI',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: NovaColors.blue,
-                      fontWeight: FontWeight.w900,
-                    ),
+    return NovaCard(
+      gradient: NovaColors.heroGradient,
+      accentColor: NovaColors.electric,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              gradient: NovaColors.premiumGradient,
+              borderRadius: BorderRadius.circular(NovaRadius.md),
+              boxShadow: NovaShadows.glow(NovaColors.blue),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              displayName.trim().isEmpty
+                  ? 'N'
+                  : displayName.trim()[0].toUpperCase(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 21,
+                fontWeight: FontWeight.w900,
               ),
-              const SizedBox(height: NovaSpacing.xs),
-              Text(
-                '${_friendlyDate(now)} • Hi, $displayName',
-                style: const TextStyle(color: NovaColors.graphite),
-              ),
-            ],
+            ),
           ),
-        ),
-        IconButton(
-          tooltip: 'Notifications',
-          icon: const Icon(Icons.notifications_none),
-          onPressed: () => _showNotificationsSheet(context),
-        ),
-      ],
+          const SizedBox(width: NovaSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _greeting(now.hour),
+                  style: const TextStyle(
+                    color: NovaColors.mint,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: NovaSpacing.xs),
+                Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                      ),
+                ),
+                const SizedBox(height: NovaSpacing.xs),
+                Text(
+                  _friendlyDate(now),
+                  style: const TextStyle(color: NovaColors.graphite),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Notifications',
+            icon: const Icon(Icons.notifications_none_rounded),
+            onPressed: () => _showNotificationsSheet(context),
+          ),
+        ],
+      ),
     );
+  }
+
+  String _greeting(int hour) {
+    if (hour < 12) return 'GOOD MORNING';
+    if (hour < 17) return 'GOOD AFTERNOON';
+    return 'GOOD EVENING';
   }
 
   String _friendlyDate(DateTime date) {
@@ -165,7 +217,7 @@ void _showNotificationsSheet(BuildContext context) {
             SectionHeader(title: 'Notifications'),
             SizedBox(height: NovaSpacing.md),
             Text(
-              'No reminders are scheduled yet. Use checklist items, meal logging, and weight check-ins today; reminder scheduling is tracked in the QA plan.',
+              'Set meal, water, habit, weight, and weekly-report preferences from Daily tracking.',
             ),
           ],
         ),
@@ -186,10 +238,13 @@ class _CaloriesHero extends StatelessWidget {
         : (snapshot.consumedCalories / snapshot.targetCalories)
             .clamp(0.0, 1.0)
             .toDouble();
-    final remaining = snapshot.targetCalories - snapshot.consumedCalories;
+    final remaining = snapshot.targetCalories -
+        snapshot.consumedCalories +
+        snapshot.exerciseCalories;
     final isOver = remaining < 0;
     return NovaCard(
-      color: NovaColors.panel,
+      gradient: NovaColors.heroGradient,
+      accentColor: isOver ? NovaColors.coral : NovaColors.blue,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -268,10 +323,10 @@ class _CaloriesHero extends StatelessWidget {
                       color: NovaColors.blue,
                     ),
                     const SizedBox(height: NovaSpacing.md),
-                    const _CalorieLine(
+                    _CalorieLine(
                       icon: Icons.local_fire_department_outlined,
                       label: 'Exercise',
-                      value: 0,
+                      value: snapshot.exerciseCalories,
                       color: NovaColors.gold,
                     ),
                   ],
@@ -283,7 +338,7 @@ class _CaloriesHero extends StatelessWidget {
           _CalorieEquation(
             goal: snapshot.targetCalories,
             food: snapshot.consumedCalories,
-            exercise: 0,
+            exercise: snapshot.exerciseCalories,
             remaining: remaining,
           ),
           const SizedBox(height: NovaSpacing.md),
@@ -438,9 +493,17 @@ class _NutritionSnapshot extends StatelessWidget {
   Widget build(BuildContext context) {
     final calorieTarget =
         snapshot.targetCalories <= 0 ? 2000.0 : snapshot.targetCalories;
-    final proteinTarget = calorieTarget * 0.30 / 4;
-    final carbTarget = calorieTarget * 0.40 / 4;
-    final fatTarget = calorieTarget * 0.30 / 9;
+    final proteinTarget = snapshot.targetProteinG > 0
+        ? snapshot.targetProteinG
+        : calorieTarget * 0.30 / 4;
+    final carbTarget = snapshot.targetCarbsG > 0
+        ? snapshot.targetCarbsG
+        : calorieTarget * 0.40 / 4;
+    final fatTarget = snapshot.targetFatG > 0
+        ? snapshot.targetFatG
+        : calorieTarget * 0.30 / 9;
+    final fiberTarget =
+        snapshot.targetFiberG > 0 ? snapshot.targetFiberG : 30.0;
     final calcium = _micro('calcium_mg');
     final iron = _micro('iron_mg');
     final potassium = _micro('potassium_mg');
@@ -448,6 +511,7 @@ class _NutritionSnapshot extends StatelessWidget {
     final saturatedFat = _micro('saturated_fat_g');
 
     return NovaCard(
+      color: NovaColors.glass,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -562,7 +626,7 @@ class _NutritionSnapshot extends StatelessWidget {
           NutrientProgressRow(
             label: 'Fiber',
             value: snapshot.fiberG,
-            target: 30,
+            target: fiberTarget,
             unit: 'g',
             color: NovaColors.lime,
           ),
@@ -640,31 +704,108 @@ class _ActionGrid extends StatelessWidget {
             crossAxisCount: 2,
             mainAxisSpacing: NovaSpacing.md,
             crossAxisSpacing: NovaSpacing.md,
-            childAspectRatio: 2.45,
+            childAspectRatio: 1.72,
             children: [
-              NovaButton.primary(
+              _QuickActionTile(
                 label: 'Log food',
-                icon: Icons.add_circle_outline,
-                onPressed: () => context.go(_withMealType('/meals/manual')),
+                caption: 'Search or add',
+                icon: Icons.restaurant_menu_rounded,
+                color: NovaColors.blue,
+                onPressed: () => context.push(_withMealType('/meals/manual')),
               ),
-              NovaButton.secondary(
+              _QuickActionTile(
                 label: 'Meal scan',
-                icon: Icons.camera_alt_outlined,
-                onPressed: () => context.go(_withMealType('/photos/scan')),
+                caption: 'AI photo review',
+                icon: Icons.camera_alt_rounded,
+                color: NovaColors.mint,
+                onPressed: () => context.push(_withMealType('/photos/scan')),
               ),
-              NovaButton.secondary(
+              _QuickActionTile(
                 label: 'Quick add',
-                icon: Icons.flash_on_outlined,
-                onPressed: () => context.go(_withMealType('/meals/quick-add')),
+                caption: 'Type your meal',
+                icon: Icons.bolt_rounded,
+                color: NovaColors.gold,
+                onPressed: () =>
+                    context.push(_withMealType('/meals/quick-add')),
               ),
-              NovaButton.secondary(
+              _QuickActionTile(
                 label: 'Barcode',
-                icon: Icons.qr_code_scanner,
-                onPressed: () => context.go(_withMealType('/barcode')),
+                caption: 'Scan a product',
+                icon: Icons.qr_code_scanner_rounded,
+                color: NovaColors.coral,
+                onPressed: () => context.push(_withMealType('/barcode')),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _QuickActionTile extends StatelessWidget {
+  const _QuickActionTile({
+    required this.label,
+    required this.caption,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String caption;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$label, $caption',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(NovaRadius.md),
+        onTap: onPressed,
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color.withValues(alpha: 0.20),
+                NovaColors.panelSoft.withValues(alpha: 0.90),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(NovaRadius.md),
+            border: Border.all(color: color.withValues(alpha: 0.30)),
+          ),
+          padding: const EdgeInsets.all(NovaSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 27),
+              const Spacer(),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                caption,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: NovaColors.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -687,9 +828,19 @@ class _WaterCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SectionHeader(title: 'Water'),
+          if (snapshot.targetWaterMl > 0) ...[
+            const SizedBox(height: NovaSpacing.xs),
+            Text(
+              'Daily target ${snapshot.targetWaterMl.toStringAsFixed(0)}ml',
+              style: const TextStyle(
+                color: NovaColors.graphite,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
           const SizedBox(height: NovaSpacing.md),
           if (snapshot.waterTarget == 0)
-            const Text('Create a water habit to track glasses here.')
+            const Text('Add water from Daily tracking to begin.')
           else
             Wrap(
               spacing: NovaSpacing.sm,
@@ -702,6 +853,20 @@ class _WaterCard extends StatelessWidget {
                 );
               }),
             ),
+          const SizedBox(height: NovaSpacing.md),
+          Text(
+            '${snapshot.waterMl.toStringAsFixed(0)} ml - ${snapshot.steps} steps - ${snapshot.workoutMinutes} workout min',
+            style: const TextStyle(
+              color: NovaColors.graphite,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          NovaButton.secondary(
+            label: 'Open daily tracking',
+            icon: Icons.track_changes_outlined,
+            onPressed: () => context.push('/tracking'),
+          ),
         ],
       ),
     );
@@ -740,7 +905,7 @@ class _MealsPreview extends StatelessWidget {
                 NovaButton.primary(
                   label: 'Log first food',
                   icon: Icons.add,
-                  onPressed: () => context.go(_withMealType('/meals/manual')),
+                  onPressed: () => context.push(_withMealType('/meals/manual')),
                 ),
               ],
             )
@@ -1018,7 +1183,7 @@ class _LogWeightSheetState extends ConsumerState<_LogWeightSheet> {
                       if (!context.mounted) return;
                       setState(() => _saving = false);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(error.toString())),
+                        SnackBar(content: Text(friendlyErrorMessage(error))),
                       );
                     }
                   },

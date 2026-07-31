@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../../config/app_config.dart';
 import '../auth/token_store.dart';
 import '../models/app_models.dart';
+import '../network/network_status.dart';
 
 class ApiException implements Exception {
   const ApiException(this.message, {this.statusCode});
@@ -39,6 +40,9 @@ class ApiClient {
               handler.next(options);
             },
             onError: (error, handler) async {
+              if (_isConnectionError(error)) {
+                NetworkStatus.instance.markOffline();
+              }
               if (error.response?.statusCode == 401 &&
                   error.requestOptions.extra['retried'] != true) {
                 final refreshed = await _refreshToken();
@@ -61,10 +65,25 @@ class ApiClient {
   Future<Response<dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
   }) async {
-    return _guard(
-      () => dio.get<dynamic>(path, queryParameters: queryParameters),
-    );
+    return _guard(() async {
+      try {
+        return await dio.get<dynamic>(
+          path,
+          queryParameters: queryParameters,
+          cancelToken: cancelToken,
+        );
+      } on DioException catch (error) {
+        if (!_isConnectionError(error)) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 450));
+        return dio.get<dynamic>(
+          path,
+          queryParameters: queryParameters,
+          cancelToken: cancelToken,
+        );
+      }
+    });
   }
 
   Future<Response<dynamic>> post(String path, {Object? data}) async {
@@ -111,8 +130,13 @@ class ApiClient {
     Future<Response<dynamic>> Function() request,
   ) async {
     try {
-      return await request();
+      final response = await request();
+      NetworkStatus.instance.markOnline();
+      return response;
     } on DioException catch (error) {
+      if (_isConnectionError(error)) {
+        NetworkStatus.instance.markOffline();
+      }
       final message = _errorMessage(
         error.response?.data,
         fallback: error.message ?? 'Something went wrong.',
@@ -140,6 +164,13 @@ class ApiClient {
   }
 }
 
+bool _isConnectionError(DioException error) {
+  return error.type == DioExceptionType.connectionError ||
+      error.type == DioExceptionType.connectionTimeout ||
+      error.type == DioExceptionType.receiveTimeout ||
+      error.type == DioExceptionType.sendTimeout;
+}
+
 String _errorMessage(Object? data, {required String fallback}) {
   if (data is Map) {
     final error = data['error'];
@@ -160,9 +191,42 @@ String _detailMessage(Object? detail) {
     return detail.map(_detailMessage).join(' ');
   }
   if (detail is Map) {
-    return detail.entries
-        .map((entry) => '${entry.key}: ${_detailMessage(entry.value)}')
-        .join(' ');
+    return detail.entries.map((entry) {
+      final key = entry.key.toString();
+      final message = _detailMessage(entry.value);
+      if (_isGeneralErrorKey(key)) return message;
+      return '${_friendlyFieldName(key)}: $message';
+    }).join(' ');
   }
   return detail.toString();
+}
+
+bool _isGeneralErrorKey(String key) {
+  final normalized = key.toLowerCase();
+  return normalized == 'non_field_errors' ||
+      normalized == 'detail' ||
+      normalized == 'error' ||
+      normalized == 'errors';
+}
+
+String _friendlyFieldName(String key) {
+  const fieldNames = {
+    'food_id': 'Food',
+    'meal_type': 'Meal type',
+    'quantity_value': 'Quantity',
+    'quantity_unit': 'Unit',
+    'total_grams': 'Serving weight',
+    'display_name': 'Display name',
+    'height_cm': 'Height',
+    'weight_kg': 'Weight',
+    'email': 'Email',
+    'password': 'Password',
+  };
+  return fieldNames[key] ??
+      key
+          .replaceAll('_', ' ')
+          .split(' ')
+          .where((part) => part.isNotEmpty)
+          .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+          .join(' ');
 }

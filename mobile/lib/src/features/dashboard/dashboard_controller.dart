@@ -11,6 +11,16 @@ final progressReportProvider = FutureProvider<ProgressReport>((ref) async {
   return ref.watch(nutritionRepositoryProvider).progressReport();
 });
 
+final weeklyBetaReportProvider =
+    FutureProvider<Map<String, dynamic>>((ref) async {
+  return ref.watch(nutritionRepositoryProvider).weeklyBetaReport();
+});
+
+final nutritionTargetsProvider =
+    FutureProvider<NutritionTargetPlan>((ref) async {
+  return ref.watch(nutritionRepositoryProvider).nutritionTargets();
+});
+
 final foodSearchProvider =
     FutureProvider.family<List<FoodSummary>, String>((ref, query) async {
   if (query.trim().isEmpty) return const [];
@@ -23,6 +33,11 @@ final recentFoodsProvider = FutureProvider<List<FoodSummary>>((ref) async {
 
 final frequentFoodsProvider = FutureProvider<List<FoodSummary>>((ref) async {
   return ref.watch(nutritionRepositoryProvider).frequentFoods();
+});
+
+final usualFoodsProvider =
+    FutureProvider.family<List<FoodSummary>, String>((ref, mealType) async {
+  return ref.watch(nutritionRepositoryProvider).usualFoods(mealType);
 });
 
 final favoriteFoodsProvider = FutureProvider<List<FoodSummary>>((ref) async {

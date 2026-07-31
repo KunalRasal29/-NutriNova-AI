@@ -19,9 +19,15 @@ class MealLogScreen extends ConsumerWidget {
       title: 'Diary',
       actions: [
         IconButton(
+          tooltip: 'Copy yesterday',
+          icon: const Icon(Icons.content_copy_outlined),
+          onPressed: () => _copyYesterday(context, ref),
+        ),
+        IconButton(
           tooltip: 'Search food',
           icon: const Icon(Icons.search),
-          onPressed: () => context.go(_withMealType('/foods/search', 'lunch')),
+          onPressed: () =>
+              context.push(_withMealType('/foods/search', 'lunch')),
         ),
       ],
       body: meals.when(
@@ -59,6 +65,54 @@ class MealLogScreen extends ConsumerWidget {
         ),
         loading: () => const LoadingList(),
       ),
+    );
+  }
+}
+
+Future<void> _copyYesterday(BuildContext context, WidgetRef ref) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Copy yesterday’s meals?'),
+      content: const Text(
+        'Yesterday’s logged meal items will be copied into today. You can edit or remove them afterward.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Copy'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await ref.read(nutritionRepositoryProvider).copyYesterday(DateTime.now());
+    ref.invalidate(todayMealLogsProvider);
+    ref.invalidate(dashboardProvider);
+    ref.invalidate(recentFoodsProvider);
+    ref.invalidate(frequentFoodsProvider);
+    for (final mealType in const [
+      'breakfast',
+      'lunch',
+      'dinner',
+      'snack',
+    ]) {
+      ref.invalidate(usualFoodsProvider(mealType));
+    }
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Yesterday’s meals copied')),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text(friendlyErrorMessage(error))),
     );
   }
 }
@@ -279,22 +333,23 @@ class _FastActions extends StatelessWidget {
         _ActionTile(
           icon: Icons.qr_code_scanner,
           label: 'Barcode',
-          onTap: () => context.go(_withMealType('/barcode', mealType)),
+          onTap: () => context.push(_withMealType('/barcode', mealType)),
         ),
         _ActionTile(
           icon: Icons.flash_on_outlined,
           label: 'Text add',
-          onTap: () => context.go(_withMealType('/meals/quick-add', mealType)),
+          onTap: () =>
+              context.push(_withMealType('/meals/quick-add', mealType)),
         ),
         _ActionTile(
           icon: Icons.camera_alt_outlined,
           label: 'Meal scan',
-          onTap: () => context.go(_withMealType('/photos/scan', mealType)),
+          onTap: () => context.push(_withMealType('/photos/scan', mealType)),
         ),
         _ActionTile(
           icon: Icons.add_circle_outline,
           label: 'Custom',
-          onTap: () => context.go(_withMealType('/foods/custom', mealType)),
+          onTap: () => context.push(_withMealType('/foods/custom', mealType)),
         ),
       ],
     );
@@ -434,7 +489,7 @@ class _MealSection extends ConsumerWidget {
                 ),
                 trailing: const Icon(Icons.add, color: NovaColors.blue),
                 onTap: () =>
-                    context.go(_withMealType('/foods/search', mealType)),
+                    context.push(_withMealType('/foods/search', mealType)),
               )
             else ...[
               for (final item in items)
@@ -454,7 +509,7 @@ class _MealSection extends ConsumerWidget {
                 ),
                 trailing: const Icon(Icons.add, color: NovaColors.blue),
                 onTap: () =>
-                    context.go(_withMealType('/foods/search', mealType)),
+                    context.push(_withMealType('/foods/search', mealType)),
               ),
             ],
           ],
@@ -591,12 +646,38 @@ class _MealItemTile extends StatelessWidget {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       title: Text(item.foodName),
-      subtitle: Text(
-        '$amount • P ${item.proteinG.toStringAsFixed(0)}g  '
-        'C ${item.carbsG.toStringAsFixed(0)}g  '
-        'F ${item.fatG.toStringAsFixed(0)}g',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$amount • P ${item.proteinG.toStringAsFixed(0)}g  '
+            'C ${item.carbsG.toStringAsFixed(0)}g  '
+            'F ${item.fatG.toStringAsFixed(0)}g',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: NovaSpacing.xs),
+          Wrap(
+            spacing: NovaSpacing.xs,
+            runSpacing: NovaSpacing.xs,
+            children: [
+              SourceConfidenceBadges(
+                source: item.source,
+                confidence: item.confidence,
+                verified: item.verified,
+                classification: item.classification,
+              ),
+              if (item.preparationState != 'unspecified')
+                NovaBadge(
+                  label: item.preparationState == 'as_sold'
+                      ? 'As sold'
+                      : item.preparationState,
+                  icon: Icons.soup_kitchen_outlined,
+                  color: NovaColors.blue,
+                ),
+            ],
+          ),
+        ],
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,

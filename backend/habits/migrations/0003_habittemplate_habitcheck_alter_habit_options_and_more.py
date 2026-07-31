@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("habits", "0002_dailychecklisttask_unique_generated_task_per_user_habit_day"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

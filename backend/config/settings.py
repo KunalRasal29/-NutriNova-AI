@@ -79,6 +79,8 @@ INSTALLED_APPS = [
     "goals",
     "analytics",
     "integrations",
+    "tracking",
+    "community",
     "common",
 ]
 
@@ -129,8 +131,7 @@ AUTH_USER_MODEL = "accounts.User"
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": (
-            "django.contrib.auth.password_validation."
-            "UserAttributeSimilarityValidator"
+            "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
         ),
     },
     {
@@ -213,6 +214,16 @@ CELERY_TASK_ALWAYS_EAGER = env_bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 
 PHOTO_ANALYSIS_PROVIDER = env("PHOTO_ANALYSIS_PROVIDER", "mock")
 OPENAI_API_KEY = env("OPENAI_API_KEY", "")
+OPENAI_VISION_MODEL = env("OPENAI_VISION_MODEL", "gpt-5.6")
+OPENAI_REQUEST_TIMEOUT_SECONDS = env_int(
+    "OPENAI_REQUEST_TIMEOUT_SECONDS",
+    default=60,
+)
+OPENFOODFACTS_LIVE_LOOKUP = env_bool(
+    "OPENFOODFACTS_LIVE_LOOKUP",
+    default=False,
+)
+OPENFOODFACTS_USER_AGENT = env("OPENFOODFACTS_USER_AGENT", "")
 
 IMAGE_UPLOAD_MAX_BYTES = env_int("IMAGE_UPLOAD_MAX_BYTES", 8 * 1024 * 1024)
 IMAGE_UPLOAD_ALLOWED_TYPES = env_list(

@@ -452,8 +452,8 @@ def test_confirm_label_scan_creates_food_with_nutrients(
     payload = response.json()
     assert payload["food"]["canonical_name"] == "Mock Protein Bar"
     assert payload["food"]["barcode"] == "8900000000999"
-    assert payload["food"]["food_type"] == "branded"
-    assert payload["food"]["source"]["source_type"] == "OPEN_FOOD_FACTS"
+    assert payload["food"]["food_type"] == "user_custom"
+    assert payload["food"]["source"]["source_type"] == "USER_CUSTOM"
 
     food = Food.objects.get(id=payload["food"]["id"])
     assert food.created_by == user
@@ -498,9 +498,7 @@ def test_egg_quantity_increment_updates_grams_and_preview(
     assert Decimal(str(item["effective_total_grams"])) == Decimal("300.000")
     assert Decimal(str(item["calories_kcal"])) == Decimal("465.000")
     assert Decimal(str(item["protein_g"])) == Decimal("37.800")
-    assert Decimal(str(payload["total_preview"]["calories_kcal"])) == Decimal(
-        "465.000"
-    )
+    assert Decimal(str(payload["total_preview"]["calories_kcal"])) == Decimal("465.000")
 
 
 @pytest.mark.django_db
@@ -527,9 +525,7 @@ def test_decrement_quantity_updates_preview(api_client, user, egg_food, tmp_path
     assert Decimal(str(item["effective_quantity_value"])) == Decimal("4.000")
     assert Decimal(str(item["effective_total_grams"])) == Decimal("200.000")
     assert Decimal(str(item["calories_kcal"])) == Decimal("310.000")
-    assert Decimal(str(payload["total_preview"]["calories_kcal"])) == Decimal(
-        "310.000"
-    )
+    assert Decimal(str(payload["total_preview"]["calories_kcal"])) == Decimal("310.000")
 
 
 @pytest.mark.django_db
@@ -736,3 +732,128 @@ def test_another_user_cannot_edit_detected_food(
     )
 
     assert response.status_code == 404
+
+
+@pytest.mark.django_db
+@override_settings(
+    CELERY_TASK_ALWAYS_EAGER=True,
+    PHOTO_ANALYSIS_PROVIDER="mock",
+    STORAGES=LOCAL_FILE_STORAGES,
+)
+def test_eaten_percentage_scales_preview_without_overwriting_ai_portion(
+    api_client,
+    user,
+    egg_food,
+    tmp_path,
+):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        api_client.force_authenticate(user=user)
+        upload_response = upload_egg_photo(api_client)
+
+    detected = upload_response.json()["detected_foods"][0]
+    response = api_client.post(
+        reverse("photo-detected-food-eaten-percentage", args=[detected["id"]]),
+        {"eaten_percentage": "50.00"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    item = response.json()["items"][0]
+    assert Decimal(str(item["effective_total_grams"])) == Decimal("125.000")
+    assert Decimal(str(item["calories_kcal"])) == Decimal("193.750")
+    stored = PhotoDetectedFood.objects.get(id=detected["id"])
+    assert stored.total_grams_estimate == Decimal("250.000")
+    assert stored.eaten_percentage == Decimal("50.00")
+
+
+@pytest.mark.django_db
+@override_settings(
+    CELERY_TASK_ALWAYS_EAGER=True,
+    PHOTO_ANALYSIS_PROVIDER="mock",
+    STORAGES=LOCAL_FILE_STORAGES,
+)
+def test_split_item_and_photo_confirmation_are_idempotent(
+    api_client,
+    user,
+    egg_food,
+    paneer_food,
+    tmp_path,
+):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        api_client.force_authenticate(user=user)
+        upload_response = upload_egg_photo(api_client)
+
+    detected_id = upload_response.json()["detected_foods"][0]["id"]
+    split_response = api_client.post(
+        reverse("photo-detected-food-split", args=[detected_id]),
+        {
+            "items": [
+                {
+                    "food_id": str(egg_food.id),
+                    "quantity_value": "2",
+                    "quantity_unit": "egg",
+                    "total_grams": "100",
+                },
+                {
+                    "food_id": str(paneer_food.id),
+                    "quantity_value": "50",
+                    "quantity_unit": "gram",
+                    "total_grams": "50",
+                },
+            ]
+        },
+        format="json",
+    )
+    assert split_response.status_code == 200, split_response.json()
+    visible_items = [
+        item for item in split_response.json()["items"] if not item["is_removed"]
+    ]
+    assert len(visible_items) == 2
+
+    confirm_url = reverse(
+        "photo-confirm-as-meal",
+        args=[upload_response.json()["id"]],
+    )
+    payload = {"date": "2026-06-29", "meal_type": "lunch"}
+    assert api_client.post(confirm_url, payload, format="json").status_code == 201
+    assert api_client.post(confirm_url, payload, format="json").status_code == 201
+    assert MealLog.objects.filter(user=user, name="Photo meal").count() == 1
+
+
+@pytest.mark.django_db
+@override_settings(
+    CELERY_TASK_ALWAYS_EAGER=True,
+    PHOTO_ANALYSIS_PROVIDER="mock",
+    STORAGES=LOCAL_FILE_STORAGES,
+)
+def test_label_fields_are_editable_before_private_custom_food_confirmation(
+    api_client,
+    user,
+    seeded_core,
+    tmp_path,
+):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        api_client.force_authenticate(user=user)
+        upload_response = upload_label_photo(api_client)
+
+    response = api_client.post(
+        reverse("photo-confirm-label-as-food", args=[upload_response.json()["id"]]),
+        {
+            "product_name": "Kunal's Reviewed Bar",
+            "brand": "Friends Beta",
+            "serving_size": "1 bar (60 g)",
+            "barcode": "1234567890",
+            "parsed_nutrients": {
+                "calories": "240",
+                "protein_g": "24",
+                "carbs_g": "26",
+                "fat_g": "7",
+            },
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.json()
+    food = Food.objects.get(id=response.json()["food"]["id"])
+    assert food.canonical_name == "Kunal's Reviewed Bar"
+    assert food.created_by == user
+    assert food.food_type == Food.FoodType.USER_CUSTOM

@@ -21,6 +21,7 @@ DEFAULT_DAILY_TARGETS = {
     "carbs_g": Decimal("250.000"),
     "fat_g": Decimal("70.000"),
     "fiber_g": Decimal("30.000"),
+    "water_ml": Decimal("2500.000"),
     "sugar_g": Decimal("50.000"),
     "sodium_mg": Decimal("2300.000"),
 }
@@ -198,6 +199,16 @@ def macro_percentage_split(values: dict) -> dict[str, str]:
 def daily_targets_for_user(user, date) -> dict[str, Decimal]:
     targets = DEFAULT_DAILY_TARGETS.copy()
     from goals.models import Goal
+    from nutrition.targets import targets_from_profile
+
+    profile = getattr(user, "profile", None)
+    if profile is not None:
+        targets.update(
+            {
+                code: quantize_decimal(value)
+                for code, value in targets_from_profile(profile).items()
+            }
+        )
 
     goals = Goal.objects.filter(
         Q(end_date__isnull=True) | Q(end_date__gte=date),
@@ -210,6 +221,8 @@ def daily_targets_for_user(user, date) -> dict[str, Decimal]:
             targets["calories_kcal"] = quantize_decimal(goal.target_value)
         elif goal.goal_type == Goal.GoalType.PROTEIN:
             targets["protein_g"] = quantize_decimal(goal.target_value)
+        elif goal.goal_type == Goal.GoalType.WATER:
+            targets["water_ml"] = quantize_decimal(goal.target_value)
     return targets
 
 

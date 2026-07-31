@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +23,20 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
   final _query = TextEditingController();
   late String _mealType;
   FoodSearchTab _tab = FoodSearchTab.all;
+  Timer? _debounce;
+  List<FoodSummary> _searchResults = const [];
+  bool _searching = false;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  int _resultCount = 0;
+  int _page = 1;
+  int _searchGeneration = 0;
+  String _debouncedQuery = '';
+  String? _searchError;
+  String _foodType = '';
+  String _source = '';
+  String _preparationState = '';
+  bool? _verified;
 
   static const _suggestions = [
     'chicken breast',
@@ -50,6 +66,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _query.dispose();
     super.dispose();
   }
@@ -57,50 +74,139 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _query.text.trim();
-    final foods = ref.watch(foodSearchProvider(query));
     return NovaScaffold(
       title: 'Add Food',
       actions: [
         IconButton(
+          tooltip: 'Manage my custom foods',
+          icon: const Icon(Icons.inventory_2_outlined),
+          onPressed: () => context.push('/foods/custom/manage'),
+        ),
+        IconButton(
           tooltip: 'Create custom food',
           icon: const Icon(Icons.add_circle_outline),
-          onPressed: () =>
-              context.go(_withMealType('/foods/custom', _mealType)),
+          onPressed: () => _openCustomFood(query),
         ),
       ],
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(NovaSpacing.lg),
-            child: Column(
-              children: [
-                MealTypeSelector(
-                  value: _mealType,
-                  onChanged: (value) => setState(() => _mealType = value),
-                ),
-                const SizedBox(height: NovaSpacing.md),
-                TextField(
-                  controller: _query,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'Search foods, brands, meals...',
-                    prefixIcon: Icon(Icons.search),
+            child: NovaCard(
+              color: NovaColors.glass,
+              accentColor: NovaColors.electric,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          gradient: NovaColors.premiumGradient,
+                          borderRadius: BorderRadius.circular(NovaRadius.sm),
+                          boxShadow: NovaShadows.glow(NovaColors.blue),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Colors.white,
+                          size: 21,
+                        ),
+                      ),
+                      const SizedBox(width: NovaSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Find your next meal',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w900),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Trusted foods, your favourites and custom meals',
+                              style: TextStyle(
+                                color: NovaColors.muted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  textInputAction: TextInputAction.search,
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: NovaSpacing.md),
-                _FoodSearchTabs(
-                  value: _tab,
-                  onChanged: (tab) => setState(() => _tab = tab),
-                ),
-                const SizedBox(height: NovaSpacing.md),
-                _SearchShortcuts(mealType: _mealType),
-              ],
+                  const SizedBox(height: NovaSpacing.lg),
+                  MealTypeSelector(
+                    value: _mealType,
+                    onChanged: (value) => setState(() => _mealType = value),
+                  ),
+                  const SizedBox(height: NovaSpacing.md),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _query,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            hintText: 'Search foods, brands, meals...',
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: query.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear search',
+                                    onPressed: _clearSearch,
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                          textInputAction: TextInputAction.search,
+                          onChanged: _onQueryChanged,
+                          onSubmitted: (_) => _runSearch(reset: true),
+                        ),
+                      ),
+                      const SizedBox(width: NovaSpacing.sm),
+                      Semantics(
+                        button: true,
+                        label: 'Food search filters',
+                        child: IconButton.filledTonal(
+                          tooltip: 'Filters',
+                          onPressed: _showFilters,
+                          icon: Badge(
+                            isLabelVisible: _activeFilterCount > 0,
+                            label: Text('$_activeFilterCount'),
+                            child: const Icon(Icons.tune),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_activeFilterCount > 0) ...[
+                    const SizedBox(height: NovaSpacing.sm),
+                    _ActiveFilters(
+                      foodType: _foodType,
+                      source: _source,
+                      preparationState: _preparationState,
+                      verified: _verified,
+                      onClear: _clearFilters,
+                    ),
+                  ],
+                  const SizedBox(height: NovaSpacing.md),
+                  _FoodSearchTabs(
+                    value: _tab,
+                    onChanged: (tab) => setState(() => _tab = tab),
+                  ),
+                  const SizedBox(height: NovaSpacing.md),
+                  _SearchShortcuts(mealType: _mealType),
+                ],
+              ),
             ),
           ),
           Expanded(
-            child: _contentForTab(context, query, foods),
+            child: _contentForTab(context, query),
           ),
         ],
       ),
@@ -110,39 +216,33 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
   Widget _contentForTab(
     BuildContext context,
     String query,
-    AsyncValue<List<FoodSummary>> foods,
   ) {
     if (_tab == FoodSearchTab.all) {
       if (query.isEmpty) {
         return _FoodHomeList(
           recentState: ref.watch(recentFoodsProvider),
           frequentState: ref.watch(frequentFoodsProvider),
+          usualState: ref.watch(usualFoodsProvider(_mealType)),
           suggestions: _suggestions,
           mealType: _mealType,
-          onPick: (value) => setState(() => _query.text = value),
-          onCreateCustom: () =>
-              context.go(_withMealType('/foods/custom', _mealType)),
+          onPick: _pickSuggestion,
+          onCreateCustom: () => _openCustomFood(query),
           onFoodChanged: _refreshFoodState,
         );
       }
-      return foods.when(
-        data: (items) => _FoodResults(
-          items: items,
-          query: query,
-          mealType: _mealType,
-          title: 'Best Match',
-          showBestMatch: true,
-          emptyTitle: 'No foods found',
-          emptyMessage: 'Create it once and it will be available next time.',
-          onCreateCustom: () =>
-              context.go(_withMealType('/foods/custom', _mealType)),
-          onFoodChanged: _refreshFoodState,
-        ),
-        error: (error, _) => ErrorPanel(
-          message: friendlyErrorMessage(error),
-          onRetry: () => ref.invalidate(foodSearchProvider(query)),
-        ),
-        loading: () => const LoadingList(),
+      return _SearchResultList(
+        items: _searchResults,
+        query: _debouncedQuery,
+        mealType: _mealType,
+        loading: _searching,
+        loadingMore: _loadingMore,
+        hasMore: _hasMore,
+        resultCount: _resultCount,
+        error: _searchError,
+        onRetry: () => _runSearch(reset: true),
+        onLoadMore: _loadMore,
+        onCreateCustom: () => _openCustomFood(query),
+        onFoodChanged: _refreshFoodState,
       );
     }
 
@@ -151,7 +251,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
       FoodSearchTab.frequent => ref.watch(frequentFoodsProvider),
       FoodSearchTab.favorites => ref.watch(favoriteFoodsProvider),
       FoodSearchTab.myFoods => ref.watch(myFoodsProvider),
-      FoodSearchTab.all => foods,
+      FoodSearchTab.all => throw StateError('All foods use paged search.'),
     };
     return _FoodAsyncResults(
       state: tabState,
@@ -160,8 +260,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
       title: _tab.title,
       emptyTitle: _tab.emptyTitle,
       emptyMessage: _tab.emptyMessage,
-      onCreateCustom: () =>
-          context.go(_withMealType('/foods/custom', _mealType)),
+      onCreateCustom: () => _openCustomFood(query),
       onFoodChanged: _refreshFoodState,
     );
   }
@@ -171,12 +270,483 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
     ref.invalidate(todayMealLogsProvider);
     ref.invalidate(recentFoodsProvider);
     ref.invalidate(frequentFoodsProvider);
+    ref.invalidate(usualFoodsProvider(_mealType));
     ref.invalidate(favoriteFoodsProvider);
     ref.invalidate(myFoodsProvider);
-    final query = _query.text.trim();
-    if (query.isNotEmpty) {
-      ref.invalidate(foodSearchProvider(query));
+    if (_query.text.trim().isNotEmpty) _runSearch(reset: true);
+  }
+
+  int get _activeFilterCount => [
+        _foodType.isNotEmpty,
+        _source.isNotEmpty,
+        _preparationState.isNotEmpty,
+        _verified != null,
+      ].where((active) => active).length;
+
+  void _onQueryChanged(String value) {
+    setState(() {});
+    _debounce?.cancel();
+    if (value.trim().isEmpty) {
+      setState(() {
+        _debouncedQuery = '';
+        _searchResults = const [];
+        _searchError = null;
+        _searching = false;
+      });
+      return;
     }
+    _debounce = Timer(
+      const Duration(milliseconds: 350),
+      () => _runSearch(reset: true),
+    );
+  }
+
+  void _clearSearch() {
+    _debounce?.cancel();
+    _query.clear();
+    _onQueryChanged('');
+  }
+
+  void _pickSuggestion(String value) {
+    _query.text = value;
+    _query.selection = TextSelection.collapsed(offset: value.length);
+    _onQueryChanged(value);
+  }
+
+  FoodSearchRequest _requestFor(int page) => FoodSearchRequest(
+        query: _query.text.trim(),
+        page: page,
+        foodType: _foodType,
+        source: _source,
+        preparationState: _preparationState,
+        verified: _verified,
+      );
+
+  Future<void> _runSearch({required bool reset}) async {
+    final value = _query.text.trim();
+    if (value.isEmpty) return;
+    final generation = ++_searchGeneration;
+    final nextPage = reset ? 1 : _page + 1;
+    setState(() {
+      _debouncedQuery = value;
+      _searchError = null;
+      if (reset) {
+        _searching = true;
+      } else {
+        _loadingMore = true;
+      }
+    });
+    try {
+      final page = await ref
+          .read(nutritionRepositoryProvider)
+          .searchFoodsAdvanced(_requestFor(nextPage));
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() {
+        _page = page.page;
+        _resultCount = page.count;
+        _hasMore = page.hasMore;
+        _searchResults =
+            reset ? page.items : [..._searchResults, ...page.items];
+      });
+    } catch (error) {
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() => _searchError = friendlyErrorMessage(error));
+    } finally {
+      if (mounted && generation == _searchGeneration) {
+        setState(() {
+          _searching = false;
+          _loadingMore = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMore() => _runSearch(reset: false);
+
+  Future<void> _openCustomFood(String initialName) async {
+    final uri = Uri(
+      path: '/foods/custom',
+      queryParameters: {
+        'meal_type': _mealType,
+        if (initialName.trim().isNotEmpty) 'name': initialName.trim(),
+        'return_to': 'search',
+      },
+    );
+    final created = await context.push<FoodDetail>(uri.toString());
+    if (!mounted || created == null) return;
+    _query.text = created.name;
+    _onQueryChanged(created.name);
+    await context.push(
+      _withMealType('/foods/${created.id}', _mealType),
+    );
+  }
+
+  Future<void> _showFilters() async {
+    final selection = await showModalBottomSheet<_FoodFilterSelection>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _FoodFilterSheet(
+        initial: _FoodFilterSelection(
+          foodType: _foodType,
+          source: _source,
+          preparationState: _preparationState,
+          verified: _verified,
+        ),
+      ),
+    );
+    if (selection == null || !mounted) return;
+    setState(() {
+      _foodType = selection.foodType;
+      _source = selection.source;
+      _preparationState = selection.preparationState;
+      _verified = selection.verified;
+    });
+    if (_query.text.trim().isNotEmpty) _runSearch(reset: true);
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _foodType = '';
+      _source = '';
+      _preparationState = '';
+      _verified = null;
+    });
+    if (_query.text.trim().isNotEmpty) _runSearch(reset: true);
+  }
+}
+
+class _SearchResultList extends StatelessWidget {
+  const _SearchResultList({
+    required this.items,
+    required this.query,
+    required this.mealType,
+    required this.loading,
+    required this.loadingMore,
+    required this.hasMore,
+    required this.resultCount,
+    required this.onRetry,
+    required this.onLoadMore,
+    required this.onCreateCustom,
+    required this.onFoodChanged,
+    this.error,
+  });
+
+  final List<FoodSummary> items;
+  final String query;
+  final String mealType;
+  final bool loading;
+  final bool loadingMore;
+  final bool hasMore;
+  final int resultCount;
+  final String? error;
+  final VoidCallback onRetry;
+  final VoidCallback onLoadMore;
+  final VoidCallback onCreateCustom;
+  final VoidCallback onFoodChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && items.isEmpty) return const LoadingList();
+    if (error != null && items.isEmpty) {
+      return ErrorPanel(message: error!, onRetry: onRetry);
+    }
+    if (items.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+        children: [
+          NovaCard(
+            child: Column(
+              children: [
+                EmptyState(
+                  title: 'No foods found',
+                  message:
+                      'No match for “$query”. Try fewer words or create it privately.',
+                  icon: Icons.search_off,
+                ),
+                NovaButton.primary(
+                  label: 'Create custom food',
+                  icon: Icons.add,
+                  onPressed: onCreateCustom,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    return ListView.builder(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+      itemCount: items.length + 2,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: NovaSpacing.md),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Best matches',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                Text(
+                  '$resultCount found',
+                  style: const TextStyle(
+                    color: NovaColors.graphite,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        if (index <= items.length) {
+          final food = items[index - 1];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: NovaSpacing.sm),
+            child: _FoodResultTile(
+              food: food,
+              mealType: mealType,
+              highlighted: index == 1,
+              onFoodChanged: onFoodChanged,
+            ),
+          );
+        }
+        if (error != null) {
+          return ErrorPanel(message: error!, onRetry: onLoadMore);
+        }
+        if (!hasMore) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: NovaSpacing.lg),
+            child: Center(
+              child: Text(
+                'That’s all the matching foods.',
+                style: TextStyle(color: NovaColors.graphite),
+              ),
+            ),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: NovaSpacing.md),
+          child: NovaButton.secondary(
+            label: loadingMore ? 'Loading more…' : 'Load more results',
+            icon: Icons.expand_more,
+            onPressed: loadingMore ? null : onLoadMore,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ActiveFilters extends StatelessWidget {
+  const _ActiveFilters({
+    required this.foodType,
+    required this.source,
+    required this.preparationState,
+    required this.verified,
+    required this.onClear,
+  });
+
+  final String foodType;
+  final String source;
+  final String preparationState;
+  final bool? verified;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: Wrap(
+        spacing: NovaSpacing.xs,
+        runSpacing: NovaSpacing.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (foodType.isNotEmpty) Chip(label: Text(_foodTypeLabel(foodType))),
+          if (source.isNotEmpty) Chip(label: Text(source.replaceAll('_', ' '))),
+          if (preparationState.isNotEmpty)
+            Chip(label: Text(_preparationLabel(preparationState))),
+          if (verified != null)
+            Chip(label: Text(verified! ? 'Verified only' : 'Unverified only')),
+          TextButton.icon(
+            onPressed: onClear,
+            icon: const Icon(Icons.close, size: 16),
+            label: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FoodFilterSelection {
+  const _FoodFilterSelection({
+    required this.foodType,
+    required this.source,
+    required this.preparationState,
+    required this.verified,
+  });
+
+  final String foodType;
+  final String source;
+  final String preparationState;
+  final bool? verified;
+}
+
+class _FoodFilterSheet extends StatefulWidget {
+  const _FoodFilterSheet({required this.initial});
+
+  final _FoodFilterSelection initial;
+
+  @override
+  State<_FoodFilterSheet> createState() => _FoodFilterSheetState();
+}
+
+class _FoodFilterSheetState extends State<_FoodFilterSheet> {
+  late String _foodType;
+  late String _source;
+  late String _preparationState;
+  late bool? _verified;
+
+  @override
+  void initState() {
+    super.initState();
+    _foodType = widget.initial.foodType;
+    _source = widget.initial.source;
+    _preparationState = widget.initial.preparationState;
+    _verified = widget.initial.verified;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          NovaSpacing.lg,
+          NovaSpacing.lg,
+          NovaSpacing.lg,
+          MediaQuery.viewInsetsOf(context).bottom + NovaSpacing.lg,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SectionHeader(title: 'Search filters'),
+              const SizedBox(height: NovaSpacing.xs),
+              const Text(
+                'Narrow a large local food database.',
+                style: TextStyle(color: NovaColors.graphite),
+              ),
+              const SizedBox(height: NovaSpacing.lg),
+              _dropdown(
+                label: 'Food type',
+                value: _foodType,
+                values: const {
+                  '': 'All foods',
+                  'generic': 'Generic',
+                  'branded': 'Branded',
+                  'user_custom': 'My custom foods',
+                },
+                onChanged: (value) => setState(() => _foodType = value),
+              ),
+              const SizedBox(height: NovaSpacing.md),
+              _dropdown(
+                label: 'Source',
+                value: _source,
+                values: const {
+                  '': 'All sources',
+                  'USDA_FDC': 'USDA FoodData Central',
+                  'OPEN_FOOD_FACTS': 'Open Food Facts',
+                  'IFCT_2017': 'IFCT 2017',
+                  'INDB': 'Indian Nutrient Databank',
+                  'USER_CUSTOM': 'User custom',
+                },
+                onChanged: (value) => setState(() => _source = value),
+              ),
+              const SizedBox(height: NovaSpacing.md),
+              _dropdown(
+                label: 'Preparation method',
+                value: _preparationState,
+                values: const {
+                  '': 'Any preparation',
+                  'raw': 'Raw',
+                  'cooked': 'Cooked',
+                  'boiled': 'Boiled',
+                  'fried': 'Fried',
+                  'baked': 'Baked',
+                  'grilled': 'Grilled',
+                  'roasted': 'Roasted',
+                  'steamed': 'Steamed',
+                  'prepared': 'Prepared dish',
+                  'as_sold': 'As sold / packaged',
+                },
+                onChanged: (value) => setState(() => _preparationState = value),
+              ),
+              const SizedBox(height: NovaSpacing.lg),
+              const Text(
+                'Verification',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: NovaSpacing.sm),
+              Wrap(
+                spacing: NovaSpacing.sm,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Any'),
+                    selected: _verified == null,
+                    onSelected: (_) => setState(() => _verified = null),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Verified'),
+                    selected: _verified == true,
+                    onSelected: (_) => setState(() => _verified = true),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Unverified'),
+                    selected: _verified == false,
+                    onSelected: (_) => setState(() => _verified = false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: NovaSpacing.xl),
+              NovaButton.primary(
+                label: 'Apply filters',
+                icon: Icons.check,
+                onPressed: () => Navigator.pop(
+                  context,
+                  _FoodFilterSelection(
+                    foodType: _foodType,
+                    source: _source,
+                    preparationState: _preparationState,
+                    verified: _verified,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dropdown({
+    required String label,
+    required String value,
+    required Map<String, String> values,
+    required ValueChanged<String> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      decoration: InputDecoration(labelText: label),
+      items: [
+        for (final entry in values.entries)
+          DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+      ],
+      onChanged: (next) => onChanged(next ?? ''),
+    );
   }
 }
 
@@ -307,7 +877,7 @@ class _SearchShortcuts extends StatelessWidget {
         for (final shortcut in shortcuts)
           InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: () => context.go(_withMealType(shortcut.$3, mealType)),
+            onTap: () => context.push(_withMealType(shortcut.$3, mealType)),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: NovaColors.panel,
@@ -342,6 +912,7 @@ class _FoodHomeList extends StatelessWidget {
   const _FoodHomeList({
     required this.recentState,
     required this.frequentState,
+    required this.usualState,
     required this.suggestions,
     required this.mealType,
     required this.onPick,
@@ -351,6 +922,7 @@ class _FoodHomeList extends StatelessWidget {
 
   final AsyncValue<List<FoodSummary>> recentState;
   final AsyncValue<List<FoodSummary>> frequentState;
+  final AsyncValue<List<FoodSummary>> usualState;
   final List<String> suggestions;
   final String mealType;
   final ValueChanged<String> onPick;
@@ -366,6 +938,14 @@ class _FoodHomeList extends StatelessWidget {
           title: 'Recently Logged',
           emptyText: 'Log a food once and it will appear here.',
           state: recentState,
+          mealType: mealType,
+          onFoodChanged: onFoodChanged,
+        ),
+        const SizedBox(height: NovaSpacing.xl),
+        _FoodHomeSection(
+          title: 'Usual ${_mealLabel(mealType)}',
+          emptyText: 'Foods you often log for this meal will appear here.',
+          state: usualState,
           mealType: mealType,
           onFoodChanged: onFoodChanged,
         ),
@@ -510,7 +1090,6 @@ class _FoodResults extends StatelessWidget {
     required this.emptyMessage,
     required this.onCreateCustom,
     required this.onFoodChanged,
-    this.showBestMatch = false,
   });
 
   final List<FoodSummary> items;
@@ -521,7 +1100,6 @@ class _FoodResults extends StatelessWidget {
   final String emptyMessage;
   final VoidCallback onCreateCustom;
   final VoidCallback onFoodChanged;
-  final bool showBestMatch;
 
   @override
   Widget build(BuildContext context) {
@@ -551,8 +1129,6 @@ class _FoodResults extends StatelessWidget {
         ],
       );
     }
-    final best = showBestMatch ? items.first : null;
-    final rest = showBestMatch ? items.skip(1).toList() : items;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
       children: [
@@ -561,23 +1137,9 @@ class _FoodResults extends StatelessWidget {
           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: NovaSpacing.md),
-        if (best != null)
-          _FoodResultTile(
-            food: best,
-            mealType: mealType,
-            highlighted: true,
-            onFoodChanged: onFoodChanged,
-          ),
-        if (rest.isNotEmpty) ...[
-          if (best != null) ...[
-            const SizedBox(height: NovaSpacing.xl),
-            const Text(
-              'More Results',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-            ),
-          ],
+        if (items.isNotEmpty) ...[
           const SizedBox(height: NovaSpacing.md),
-          for (final food in rest) ...[
+          for (final food in items) ...[
             _FoodResultTile(
               food: food,
               mealType: mealType,
@@ -681,7 +1243,7 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
         children: [
           Expanded(
             child: InkWell(
-              onTap: () => context.go(
+              onTap: () => context.push(
                 _withMealType('/foods/${food.id}', widget.mealType),
               ),
               child: Column(
@@ -738,6 +1300,12 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
                         label: 'F ${food.preview.fatG.toStringAsFixed(0)}g',
                         color: NovaColors.violet,
                       ),
+                      SourceConfidenceBadges(
+                        source: food.sourceBadge,
+                        confidence: food.confidenceScore,
+                        verified: food.verified,
+                        classification: food.dataClassification,
+                      ),
                       if (food.preview.fiberG > 0)
                         NovaBadge(
                           label:
@@ -767,6 +1335,12 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
                           label:
                               'Iron ${food.preview.ironMg.toStringAsFixed(1)}mg',
                           color: NovaColors.coral,
+                        ),
+                      if (food.preparationState != 'unspecified')
+                        NovaBadge(
+                          label: _preparationLabel(food.preparationState),
+                          icon: Icons.soup_kitchen_outlined,
+                          color: NovaColors.blue,
                         ),
                     ],
                   ),
@@ -879,6 +1453,46 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
     } finally {
       if (mounted) setState(() => _savingFavorite = false);
     }
+  }
+}
+
+String _preparationLabel(String state) {
+  switch (state) {
+    case 'raw':
+      return 'Raw';
+    case 'cooked':
+      return 'Cooked';
+    case 'boiled':
+      return 'Boiled';
+    case 'fried':
+      return 'Fried';
+    case 'baked':
+      return 'Baked';
+    case 'grilled':
+      return 'Grilled';
+    case 'roasted':
+      return 'Roasted';
+    case 'steamed':
+      return 'Steamed';
+    case 'prepared':
+      return 'Prepared dish';
+    case 'as_sold':
+      return 'As sold';
+    default:
+      return 'Preparation not specified';
+  }
+}
+
+String _foodTypeLabel(String foodType) {
+  switch (foodType) {
+    case 'generic':
+      return 'Generic';
+    case 'branded':
+      return 'Branded';
+    case 'user_custom':
+      return 'My custom foods';
+    default:
+      return 'All types';
   }
 }
 

@@ -6,7 +6,13 @@ from django.core.management import call_command
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from foods.models import FavoriteFood, Food, FoodDataImportJob, FoodNutrient, FoodServing
+from foods.models import (
+    FavoriteFood,
+    Food,
+    FoodDataImportJob,
+    FoodNutrient,
+    FoodServing,
+)
 from meals.services.manual_add import manual_food_preview
 from nutrition.models import Nutrient, NutritionDataSource
 
@@ -103,7 +109,7 @@ def test_seed_core_nutrition_creates_sources(seeded_core):
 def test_seed_core_nutrition_creates_common_nutrients(seeded_core):
     nutrient_codes = set(Nutrient.objects.values_list("code", flat=True))
 
-    assert Nutrient.objects.count() == 16
+    assert Nutrient.objects.count() == 21
     assert {
         "calories",
         "protein_g",
@@ -113,6 +119,11 @@ def test_seed_core_nutrition_creates_common_nutrients(seeded_core):
         "sodium_mg",
         "vitamin_c_mg",
         "trans_fat_g",
+        "added_sugar_g",
+        "net_carbs_g",
+        "energy_kj",
+        "folate_mcg",
+        "folic_acid_mcg",
     }.issubset(nutrient_codes)
 
 
@@ -305,9 +316,7 @@ def test_food_favorite_toggle_updates_favorites_list(api_client, user, sample_fo
 
     favorites = api_client.get(reverse("food-favorites"))
     assert favorites.status_code == 200
-    assert [item["id"] for item in favorites.json()["results"]] == [
-        str(sample_food.id)
-    ]
+    assert [item["id"] for item in favorites.json()["results"]] == [str(sample_food.id)]
 
     response = api_client.delete(reverse("food-favorite", args=[sample_food.id]))
     assert response.status_code == 200
@@ -353,7 +362,10 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
     assert Food.objects.filter(source=source).count() >= 360
     assert Food.objects.filter(source=source, verified=True).count() >= 250
     assert Food.objects.filter(source=source).exclude(barcode="").count() >= 20
-    assert Food.objects.filter(source=source, servings__isnull=False).distinct().count() >= 360
+    assert (
+        Food.objects.filter(source=source, servings__isnull=False).distinct().count()
+        >= 360
+    )
 
     chicken_curry = Food.objects.get(source=source, canonical_name="Chicken curry")
     assert chicken_curry.servings.get(is_default=True).grams == Decimal("220.00")
@@ -367,8 +379,12 @@ def test_popular_food_seed_adds_broader_daily_catalog(api_client, user):
     assert Food.objects.filter(source=source, aliases__alias="protein shake").exists()
     assert Food.objects.filter(source=source, aliases__alias="bhindi").exists()
     assert Food.objects.filter(source=source, aliases__alias="amrood").exists()
-    assert Food.objects.filter(source=source, aliases__alias="muscleblaze whey").exists()
-    assert Food.objects.filter(source=source, aliases__alias="nimbu pani no sugar").exists()
+    assert Food.objects.filter(
+        source=source, aliases__alias="muscleblaze whey"
+    ).exists()
+    assert Food.objects.filter(
+        source=source, aliases__alias="nimbu pani no sugar"
+    ).exists()
     assert Food.objects.filter(source=source, aliases__alias="maggi").exists()
     assert Food.objects.filter(source=source, aliases__alias="coke").exists()
     assert Food.objects.filter(
@@ -510,7 +526,7 @@ def test_openfoodfacts_barcode_missing_product_is_graceful(monkeypatch):
         return {"status": "failure", "result": {"id": "product_not_found"}}
 
     monkeypatch.setattr(
-        "foods.management.commands.sync_openfoodfacts_barcode.fetch_json",
+        "foods.services.openfoodfacts.fetch_json",
         fake_fetch_json,
     )
 
@@ -540,6 +556,7 @@ def test_indian_foods_csv_importer(tmp_path):
         "import_indian_foods_csv",
         path=str(csv_path),
         source=NutritionDataSource.SourceType.INDB,
+        license_confirmed=True,
     )
 
     source = NutritionDataSource.objects.get(

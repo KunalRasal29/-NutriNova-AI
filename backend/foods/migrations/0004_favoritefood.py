@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("foods", "0003_food_allergens_food_ingredients_text_food_metadata_and_more"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

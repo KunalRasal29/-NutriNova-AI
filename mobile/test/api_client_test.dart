@@ -108,7 +108,7 @@ void main() {
         isA<ApiException>().having(
           (error) => error.message,
           'message',
-          'food_id: Choose a food.',
+          'Food: Choose a food.',
         ),
       ),
     );

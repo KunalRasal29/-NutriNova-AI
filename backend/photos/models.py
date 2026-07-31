@@ -47,6 +47,13 @@ class PhotoAnalysis(UserOwnedModel):
         validators=[MinValueValidator(0), MaxValueValidator(1)],
     )
     error_message = models.TextField(blank=True)
+    confirmed_meal = models.OneToOneField(
+        "meals.MealLog",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="source_photo_analysis",
+    )
 
     class Meta:
         ordering = ("-created_at",)
@@ -188,6 +195,19 @@ class PhotoDetectedFood(TimeStampedModel):
     nutrition_preview_snapshot = models.JSONField(default=dict, blank=True)
     added_manually = models.BooleanField(default=False)
     reasoning_short = models.CharField(max_length=255, blank=True)
+    split_parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="split_children",
+    )
+    eaten_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=100,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
 
     class Meta:
         ordering = ("-confidence_score", "detected_name")

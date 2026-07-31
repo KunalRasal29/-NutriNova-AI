@@ -135,7 +135,7 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
                         setState(() {
                           _uploading = false;
                           _progressLabel = '';
-                          _errorMessage = error.toString();
+                          _errorMessage = friendlyErrorMessage(error);
                         });
                       }
                     }
@@ -149,8 +149,12 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
   Future<void> _pick(ImageSource source) async {
     if (_uploading) return;
     try {
-      final picked =
-          await ImagePicker().pickImage(source: source, imageQuality: 85);
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 78,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
       if (picked != null && mounted) {
         setState(() {
           _image = picked;
@@ -162,7 +166,7 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
       setState(() {
         _errorMessage = source == ImageSource.camera
             ? 'Camera did not open. Allow camera permission or use Gallery.'
-            : error.toString();
+            : friendlyErrorMessage(error);
       });
     }
   }

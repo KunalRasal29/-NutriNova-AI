@@ -15,6 +15,7 @@ class LogWeightScreen extends ConsumerStatefulWidget {
 }
 
 class _LogWeightScreenState extends ConsumerState<LogWeightScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _weight = TextEditingController();
   bool _saving = false;
 
@@ -28,55 +29,74 @@ class _LogWeightScreenState extends ConsumerState<LogWeightScreen> {
   Widget build(BuildContext context) {
     return NovaScaffold(
       title: 'Log weight',
-      body: ListView(
-        padding: const EdgeInsets.all(NovaSpacing.lg),
-        children: [
-          const PageIntro(
-            title: 'Weight check-in',
-            subtitle: 'Log today’s body weight to build your progress trend.',
-            icon: Icons.monitor_weight_outlined,
-          ),
-          const SizedBox(height: NovaSpacing.lg),
-          NovaCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SectionHeader(title: 'Today'),
-                const SizedBox(height: NovaSpacing.md),
-                TextField(
-                  controller: _weight,
-                  autofocus: true,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Weight kg',
-                    prefixIcon: Icon(Icons.monitor_weight_outlined),
-                  ),
-                ),
-                const SizedBox(height: NovaSpacing.lg),
-                NovaButton.primary(
-                  label: _saving ? 'Saving...' : 'Save weight',
-                  icon: Icons.check,
-                  onPressed: _saving ? null : _save,
-                ),
-              ],
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(NovaSpacing.lg),
+          children: [
+            const PageIntro(
+              title: 'Weight check-in',
+              subtitle: 'Log today’s body weight to build your progress trend.',
+              icon: Icons.monitor_weight_outlined,
             ),
-          ),
-        ],
+            const SizedBox(height: NovaSpacing.lg),
+            NovaCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionHeader(title: 'Today'),
+                  const SizedBox(height: NovaSpacing.sm),
+                  const Text(
+                    'Use the same scale and a similar time of day for a more useful trend.',
+                    style: TextStyle(color: NovaColors.graphite, height: 1.4),
+                  ),
+                  const SizedBox(height: NovaSpacing.lg),
+                  TextFormField(
+                    controller: _weight,
+                    autofocus: true,
+                    enabled: !_saving,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _save(),
+                    decoration: const InputDecoration(
+                      labelText: 'Current weight',
+                      suffixText: 'kg',
+                      prefixIcon: Icon(Icons.monitor_weight_outlined),
+                    ),
+                    validator: (value) {
+                      final parsed = double.tryParse(value?.trim() ?? '');
+                      if (parsed == null) {
+                        return 'Enter your weight in kilograms.';
+                      }
+                      if (parsed < 25 || parsed > 350) {
+                        return 'Enter a weight between 25 and 350 kg.';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: NovaSpacing.lg),
+                  NovaButton.primary(
+                    label: _saving ? 'Saving…' : 'Save weight',
+                    icon: _saving ? Icons.hourglass_top : Icons.check,
+                    onPressed: _saving ? null : _save,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Future<void> _save() async {
+    FocusScope.of(context).unfocus();
+    if (!(_formKey.currentState?.validate() ?? false)) return;
     final value = double.tryParse(_weight.text.trim());
     final messenger = ScaffoldMessenger.of(context);
-    if (value == null || value <= 0) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Enter a valid weight in kg.')),
-      );
-      return;
-    }
+    if (value == null) return;
     setState(() => _saving = true);
     try {
       await ref.read(nutritionRepositoryProvider).logBodyMetric(
@@ -92,7 +112,9 @@ class _LogWeightScreenState extends ConsumerState<LogWeightScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     }
   }
 }

@@ -4,6 +4,7 @@ from photos.views import (
     AddManualPhotoFoodView,
     AnalyzeMealPhotoView,
     AnalyzeNutritionLabelView,
+    ApplyEatenPercentageView,
     ConfirmLabelAsFoodView,
     ConfirmPhotoAsMealView,
     DecrementDetectedFoodView,
@@ -13,6 +14,7 @@ from photos.views import (
     PhotoAnalysisReviewView,
     PhotoDetectedFoodDetailView,
     RecalculatePhotoPreviewView,
+    SplitDetectedFoodView,
 )
 
 urlpatterns = [
@@ -71,5 +73,15 @@ urlpatterns = [
         "detected-foods/<uuid:id>/decrement/",
         DecrementDetectedFoodView.as_view(),
         name="photo-detected-food-decrement",
+    ),
+    path(
+        "detected-foods/<uuid:id>/split/",
+        SplitDetectedFoodView.as_view(),
+        name="photo-detected-food-split",
+    ),
+    path(
+        "detected-foods/<uuid:id>/eaten-percentage/",
+        ApplyEatenPercentageView.as_view(),
+        name="photo-detected-food-eaten-percentage",
     ),
 ]

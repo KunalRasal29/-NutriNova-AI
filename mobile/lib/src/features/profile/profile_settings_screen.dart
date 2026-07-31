@@ -7,6 +7,7 @@ import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
 import '../auth/auth_controller.dart';
 import '../dashboard/dashboard_controller.dart';
+import 'nutrition_targets_sheet.dart';
 
 class ProfileSettingsScreen extends ConsumerWidget {
   const ProfileSettingsScreen({super.key});
@@ -51,7 +52,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
                 icon: Icons.search,
                 label: 'Food search',
                 color: NovaColors.blue,
-                onTap: () => context.go(_withMealType('/foods/search')),
+                onTap: () => context.push(_withMealType('/foods/search')),
               ),
               _QuickAction(
                 icon: Icons.bar_chart,
@@ -63,7 +64,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
                 icon: Icons.monitor_weight_outlined,
                 label: 'Weight',
                 color: NovaColors.lime,
-                onTap: () => context.go('/weight/log'),
+                onTap: () => context.push('/weight/log'),
               ),
             ],
           ),
@@ -131,52 +132,37 @@ class ProfileSettingsScreen extends ConsumerWidget {
                   subtitle: dashboard == null
                       ? 'Calories, protein, carbs, fat, water, and progress'
                       : '${dashboard.targetCalories.toStringAsFixed(0)} kcal target',
-                  onTap: () => _showSettingsSheet(
-                    context,
-                    title: 'Nutrition targets',
-                    subtitle: 'Current daily tracking values',
-                    children: [
-                      _InfoRow(
-                        'Calories',
-                        dashboard == null
-                            ? 'Open Dashboard after logging food'
-                            : '${dashboard.consumedCalories.toStringAsFixed(0)} / ${dashboard.targetCalories.toStringAsFixed(0)} kcal',
-                      ),
-                      _InfoRow(
-                        'Protein',
-                        dashboard == null
-                            ? 'Tracked from food logs'
-                            : '${dashboard.proteinG.toStringAsFixed(0)}g today',
-                      ),
-                      _InfoRow(
-                        'Carbs / Fat',
-                        dashboard == null
-                            ? 'Tracked in Diary and Progress'
-                            : '${dashboard.carbsG.toStringAsFixed(0)}g / ${dashboard.fatG.toStringAsFixed(0)}g today',
-                      ),
-                      _InfoRow(
-                        'Water',
-                        dashboard == null
-                            ? 'Connected to water checklist habits'
-                            : '${dashboard.waterCompleted}/${dashboard.waterTarget} glasses',
-                      ),
-                      const SizedBox(height: NovaSpacing.md),
-                      NovaButton.secondary(
-                        label: 'Open dashboard',
-                        icon: Icons.dashboard_outlined,
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          context.go('/home');
-                        },
-                      ),
-                    ],
-                  ),
+                  onTap: () => showNutritionTargetsSheet(context),
                 ),
                 _SettingsTile(
                   icon: Icons.restaurant_menu_outlined,
                   title: 'Food database',
                   subtitle: 'Search foods, favorites, recent, and My Foods',
-                  onTap: () => context.go(_withMealType('/foods/search')),
+                  onTap: () => context.push(_withMealType('/foods/search')),
+                ),
+                _SettingsTile(
+                  icon: Icons.track_changes_outlined,
+                  title: 'Daily tracking & reminders',
+                  subtitle: 'Water, steps, workouts, and reminder preferences',
+                  onTap: () => context.push('/tracking'),
+                ),
+                _SettingsTile(
+                  icon: Icons.document_scanner_outlined,
+                  title: 'Nutrition label scan',
+                  subtitle: 'Review a label and save a private custom food',
+                  onTap: () => context.push('/labels/scan'),
+                ),
+                _SettingsTile(
+                  icon: Icons.groups_2_outlined,
+                  title: 'Friends beta',
+                  subtitle: 'Challenges, shared recipes, and groceries',
+                  onTap: () => context.push('/friends'),
+                ),
+                _SettingsTile(
+                  icon: Icons.menu_book_outlined,
+                  title: 'Recipes',
+                  subtitle: 'Create, calculate, and log recipes',
+                  onTap: () => context.push('/recipes'),
                 ),
                 _SettingsTile(
                   icon: Icons.phone_iphone,

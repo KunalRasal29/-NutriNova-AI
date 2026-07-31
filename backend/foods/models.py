@@ -1,10 +1,14 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVector, SearchVectorField
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 from common.models import TimeStampedModel, UserOwnedModel
+from foods.text import normalize_catalog_text
 
 
 class Food(TimeStampedModel):
@@ -15,7 +19,33 @@ class Food(TimeStampedModel):
         RECIPE = "recipe", "Recipe"
         USER_CUSTOM = "user_custom", "User custom"
 
+    class PreparationState(models.TextChoices):
+        UNSPECIFIED = "unspecified", "Not specified"
+        RAW = "raw", "Raw"
+        COOKED = "cooked", "Cooked"
+        BOILED = "boiled", "Boiled"
+        FRIED = "fried", "Fried"
+        BAKED = "baked", "Baked"
+        GRILLED = "grilled", "Grilled"
+        ROASTED = "roasted", "Roasted"
+        STEAMED = "steamed", "Steamed"
+        PREPARED = "prepared", "Prepared dish"
+        AS_SOLD = "as_sold", "As sold / packaged"
+
+    class DatasetType(models.TextChoices):
+        UNKNOWN = "unknown", "Unknown / not supplied"
+        USDA_FOUNDATION = "usda_foundation", "USDA Foundation Foods"
+        USDA_FNDDS = "usda_fndds", "USDA FNDDS"
+        USDA_SR_LEGACY = "usda_sr_legacy", "USDA SR Legacy"
+        USDA_BRANDED = "usda_branded", "USDA Branded Foods"
+        USDA_EXPERIMENTAL = "usda_experimental", "USDA Experimental Foods"
+        OPEN_FOOD_FACTS = "open_food_facts", "Open Food Facts"
+        INDIAN_LICENSED = "indian_licensed", "Licensed Indian food data"
+        USER_CUSTOM = "user_custom", "User custom"
+        AI_ESTIMATE = "ai_estimate", "AI estimate"
+
     canonical_name = models.CharField(max_length=255)
+    normalized_name = models.CharField(max_length=255, blank=True, db_index=True)
     brand_name = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     ingredients_text = models.TextField(blank=True)
@@ -27,12 +57,27 @@ class Food(TimeStampedModel):
         choices=FoodType.choices,
         default=FoodType.GENERIC,
     )
+    preparation_state = models.CharField(
+        max_length=20,
+        choices=PreparationState.choices,
+        default=PreparationState.UNSPECIFIED,
+        help_text="Distinguishes raw, cooked, prepared, and packaged nutrition.",
+    )
     source = models.ForeignKey(
         "nutrition.NutritionDataSource",
         on_delete=models.PROTECT,
         related_name="foods",
     )
     external_id = models.CharField(max_length=180, blank=True)
+    dataset_type = models.CharField(
+        max_length=32,
+        choices=DatasetType.choices,
+        default=DatasetType.UNKNOWN,
+        db_index=True,
+    )
+    dataset_release = models.CharField(max_length=80, blank=True)
+    imported_at = models.DateTimeField(null=True, blank=True)
+    source_updated_at = models.DateTimeField(null=True, blank=True)
     country_code = models.CharField(max_length=2, default="IN")
     language_code = models.CharField(max_length=12, default="en")
     barcode = models.CharField(max_length=64, blank=True, db_index=True)
@@ -49,7 +94,29 @@ class Food(TimeStampedModel):
         default=0,
         validators=[MinValueValidator(0), MaxValueValidator(1)],
     )
+    completeness_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+    )
+    edible_portion_percent = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    quality_warnings = models.JSONField(default=list, blank=True)
     verified = models.BooleanField(default=False)
+    is_deprecated = models.BooleanField(default=False, db_index=True)
+    replacement_food = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="deprecated_variants",
+    )
     search_text = models.TextField(blank=True)
     search_vector = SearchVectorField(null=True, blank=True, editable=False)
     created_by = models.ForeignKey(
@@ -77,6 +144,8 @@ class Food(TimeStampedModel):
         ]
         indexes = [
             models.Index(fields=("canonical_name",)),
+            models.Index(fields=("dataset_type", "dataset_release")),
+            models.Index(fields=("is_deprecated", "verified", "data_quality_score")),
             models.Index(fields=("created_by", "canonical_name")),
             models.Index(fields=("source", "external_id")),
             GinIndex(fields=("search_vector",), name="food_search_vector_idx"),
@@ -85,10 +154,16 @@ class Food(TimeStampedModel):
                 name="food_search_text_trgm_idx",
                 opclasses=("gin_trgm_ops",),
             ),
+            GinIndex(
+                fields=("normalized_name",),
+                name="food_normalized_name_trgm_idx",
+                opclasses=("gin_trgm_ops",),
+            ),
         ]
 
     def save(self, *args, **kwargs):
         self.country_code = self.country_code.upper()
+        self.normalized_name = normalize_catalog_text(self.canonical_name)
         self.search_text = " ".join(
             value
             for value in (
@@ -120,6 +195,7 @@ class Food(TimeStampedModel):
 class FoodAlias(TimeStampedModel):
     food = models.ForeignKey(Food, on_delete=models.CASCADE, related_name="aliases")
     alias = models.CharField(max_length=255)
+    normalized_alias = models.CharField(max_length=255, blank=True, db_index=True)
     language_code = models.CharField(max_length=12, default="en")
 
     class Meta:
@@ -137,7 +213,16 @@ class FoodAlias(TimeStampedModel):
                 name="food_alias_trgm_idx",
                 opclasses=("gin_trgm_ops",),
             ),
+            GinIndex(
+                fields=("normalized_alias",),
+                name="food_alias_normalized_trgm_idx",
+                opclasses=("gin_trgm_ops",),
+            ),
         ]
+
+    def save(self, *args, **kwargs):
+        self.normalized_alias = normalize_catalog_text(self.alias)
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return self.alias
@@ -159,6 +244,15 @@ class FoodNutrient(TimeStampedModel):
         related_name="food_values",
     )
     amount_per_100g = models.DecimalField(max_digits=12, decimal_places=4)
+    original_amount = models.DecimalField(
+        max_digits=16,
+        decimal_places=6,
+        null=True,
+        blank=True,
+    )
+    original_unit = models.CharField(max_length=24, blank=True)
+    source_nutrient_id = models.CharField(max_length=80, blank=True)
+    normalization_notes = models.CharField(max_length=255, blank=True)
     min_value = models.DecimalField(
         max_digits=12,
         decimal_places=4,
@@ -226,6 +320,109 @@ class FoodServing(TimeStampedModel):
         return f"{self.serving_name} ({self.grams}g)"
 
 
+class CustomFoodProfile(UserOwnedModel):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ESTIMATE_READY = "estimate_ready", "Estimate ready"
+        NEEDS_REVIEW = "needs_review", "Needs review"
+        CONFIRMED = "confirmed", "Confirmed"
+        ARCHIVED = "archived", "Archived"
+
+    class EstimationMethod(models.TextChoices):
+        NONE = "none", "Not estimated"
+        DATABASE_MATCHES = "database_matches", "Trusted database matches"
+        INGREDIENT_SUM = "ingredient_sum", "Ingredient nutrition sum"
+        MANUAL_ENTRY = "manual_entry", "Manual user entry"
+
+    food = models.OneToOneField(
+        Food,
+        on_delete=models.CASCADE,
+        related_name="custom_profile",
+    )
+    status = models.CharField(
+        max_length=24,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+    serving_quantity = models.DecimalField(
+        max_digits=10,
+        decimal_places=3,
+        default=1,
+        validators=[MinValueValidator(Decimal("0.001"))],
+    )
+    serving_unit = models.CharField(max_length=32, default="serving")
+    serving_weight_g = models.DecimalField(
+        max_digits=10,
+        decimal_places=3,
+        validators=[MinValueValidator(Decimal("0.001"))],
+    )
+    estimation_method = models.CharField(
+        max_length=32,
+        choices=EstimationMethod.choices,
+        default=EstimationMethod.NONE,
+    )
+    original_estimated_nutrients = models.JSONField(default=dict, blank=True)
+    estimated_nutrients = models.JSONField(default=dict, blank=True)
+    estimated_range = models.JSONField(default=dict, blank=True)
+    confirmed_nutrients = models.JSONField(default=dict, blank=True)
+    reference_foods = models.JSONField(default=list, blank=True)
+    ingredients = models.JSONField(default=list, blank=True)
+    confidence_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+    )
+    user_corrections = models.JSONField(default=dict, blank=True)
+    warnings = models.JSONField(default=list, blank=True)
+    calculated_calories_kcal = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    version_number = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ("-updated_at",)
+        indexes = [
+            models.Index(fields=("user", "status")),
+            models.Index(fields=("user", "updated_at")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.food} ({self.status})"
+
+
+class CustomFoodVersion(UserOwnedModel):
+    food = models.ForeignKey(
+        Food,
+        on_delete=models.CASCADE,
+        related_name="custom_versions",
+    )
+    version = models.PositiveIntegerField()
+    event = models.CharField(max_length=32)
+    status = models.CharField(max_length=24, choices=CustomFoodProfile.Status.choices)
+    snapshot = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ("-version",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("food", "version"),
+                name="unique_custom_food_version",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("user", "food", "version")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.food} v{self.version} ({self.event})"
+
+
 class FoodDataImportJob(TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -249,9 +446,14 @@ class FoodDataImportJob(TimeStampedModel):
     rows_processed = models.PositiveIntegerField(default=0)
     rows_created = models.PositiveIntegerField(default=0)
     rows_updated = models.PositiveIntegerField(default=0)
+    rows_skipped = models.PositiveIntegerField(default=0)
     errors = models.JSONField(default=list, blank=True)
     file_name = models.CharField(max_length=255, blank=True)
     checksum = models.CharField(max_length=128, blank=True)
+    dataset_type = models.CharField(max_length=32, blank=True, db_index=True)
+    release_version = models.CharField(max_length=80, blank=True)
+    resume_offset = models.PositiveBigIntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ("-created_at",)
@@ -283,6 +485,34 @@ class FavoriteFood(UserOwnedModel):
 
     def __str__(self) -> str:
         return f"{self.user} favorited {self.food}"
+
+
+class UserPortionPreference(UserOwnedModel):
+    food = models.ForeignKey(
+        Food,
+        on_delete=models.CASCADE,
+        related_name="user_portion_preferences",
+    )
+    unit = models.CharField(max_length=32)
+    grams_per_unit = models.DecimalField(max_digits=10, decimal_places=3)
+    times_used = models.PositiveIntegerField(default=1)
+    last_used_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("-last_used_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user", "food", "unit"),
+                name="unique_portion_preference_per_user_food_unit",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("user", "food", "unit")),
+            models.Index(fields=("user", "last_used_at")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user}: {self.grams_per_unit}g per {self.unit} of {self.food}"
 
 
 class PantryItem(UserOwnedModel):

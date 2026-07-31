@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 
 from django.db.models import Q
 
-from foods.models import Food, FoodServing
+from foods.models import Food, FoodServing, UserPortionPreference
 from nutrition.calculations import calculate_food_snapshot, quantize_decimal
 from photos.models import PhotoDetectedFood
 from photos.url_utils import public_image_url
@@ -234,30 +234,46 @@ def effective_quantity(
 
 
 def effective_total_grams(detected: PhotoDetectedFood) -> Decimal | None:
+    grams = None
     if detected.user_total_grams is not None:
-        return Decimal(detected.user_total_grams)
-    if detected.user_corrected_grams is not None:
-        return Decimal(detected.user_corrected_grams)
+        grams = Decimal(detected.user_total_grams)
+    elif detected.user_corrected_grams is not None:
+        grams = Decimal(detected.user_corrected_grams)
 
     quantity, unit = effective_quantity(detected)
-    if quantity is not None and unit == PhotoDetectedFood.QuantityUnit.GRAM:
-        return Decimal(quantity)
-    if quantity is not None and unit == PhotoDetectedFood.QuantityUnit.ML:
-        return Decimal(quantity)
+    if (
+        grams is None
+        and quantity is not None
+        and unit
+        in {
+            PhotoDetectedFood.QuantityUnit.GRAM,
+            PhotoDetectedFood.QuantityUnit.ML,
+        }
+    ):
+        grams = Decimal(quantity)
 
-    if quantity is not None and detected.matched_food_id:
+    if grams is None and quantity is not None and detected.matched_food_id:
+        preference = UserPortionPreference.objects.filter(
+            user=detected.photo_analysis.user,
+            food=detected.matched_food,
+            unit=unit,
+        ).first()
+        if preference:
+            grams = quantize_decimal(Decimal(quantity) * preference.grams_per_unit)
         serving_grams = find_serving_grams(detected.matched_food, unit)
-        if serving_grams:
-            return quantize_decimal(Decimal(quantity) * serving_grams)
+        if grams is None and serving_grams:
+            grams = quantize_decimal(Decimal(quantity) * serving_grams)
 
-    if quantity is not None and detected.grams_per_unit_estimate:
-        return quantize_decimal(Decimal(quantity) * detected.grams_per_unit_estimate)
+    if grams is None and quantity is not None and detected.grams_per_unit_estimate:
+        grams = quantize_decimal(Decimal(quantity) * detected.grams_per_unit_estimate)
 
-    if detected.total_grams_estimate is not None:
-        return Decimal(detected.total_grams_estimate)
-    if detected.grams_estimate is not None:
-        return Decimal(detected.grams_estimate)
-    return None
+    if grams is None and detected.total_grams_estimate is not None:
+        grams = Decimal(detected.total_grams_estimate)
+    if grams is None and detected.grams_estimate is not None:
+        grams = Decimal(detected.grams_estimate)
+    if grams is None:
+        return None
+    return quantize_decimal(grams * Decimal(detected.eaten_percentage) / Decimal("100"))
 
 
 def source_badges_for_food(food: Food | None) -> list[dict]:
@@ -350,6 +366,8 @@ def item_nutrition_preview(detected: PhotoDetectedFood, *, include_alternatives=
         "added_manually": detected.added_manually,
         "correction_note": detected.correction_note,
         "reasoning_short": detected.reasoning_short,
+        "eaten_percentage": detected.eaten_percentage,
+        "split_parent": detected.split_parent_id,
         "alternative_matches": [],
     }
     if include_alternatives and detected.photo_analysis_id:

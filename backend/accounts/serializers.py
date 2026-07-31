@@ -20,6 +20,15 @@ PROFILE_FIELD_NAMES = (
     "allergies",
     "disliked_foods",
     "target_weight_kg",
+    "daily_calorie_target_kcal",
+    "daily_protein_target_g",
+    "daily_carbs_target_g",
+    "daily_fat_target_g",
+    "daily_fiber_target_g",
+    "daily_water_target_ml",
+    "nutrition_targets_customized",
+    "nutrition_target_method",
+    "nutrition_targets_calculated_at",
     "timezone",
     "country",
     "has_completed_onboarding",
@@ -155,6 +164,48 @@ class ProfilePayloadSerializer(serializers.Serializer):
         decimal_places=2,
         allow_null=True,
     )
+    daily_calorie_target_kcal = serializers.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_protein_target_g = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_carbs_target_g = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_fat_target_g = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_fiber_target_g = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_water_target_ml = serializers.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    nutrition_targets_customized = serializers.BooleanField(read_only=True)
+    nutrition_target_method = serializers.CharField(read_only=True)
+    nutrition_targets_calculated_at = serializers.DateTimeField(
+        read_only=True,
+        allow_null=True,
+    )
     timezone = serializers.CharField(max_length=64)
     country = serializers.CharField(max_length=2)
     has_completed_onboarding = serializers.BooleanField()
@@ -214,6 +265,48 @@ class MeSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+    daily_calorie_target_kcal = serializers.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_protein_target_g = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_carbs_target_g = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_fat_target_g = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_fiber_target_g = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    daily_water_target_ml = serializers.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    nutrition_targets_customized = serializers.BooleanField(read_only=True)
+    nutrition_target_method = serializers.CharField(read_only=True)
+    nutrition_targets_calculated_at = serializers.DateTimeField(
+        read_only=True,
+        allow_null=True,
+    )
     timezone = serializers.CharField(max_length=64, required=False)
     country = serializers.CharField(max_length=2, required=False)
     has_completed_onboarding = serializers.BooleanField(required=False)
@@ -248,6 +341,7 @@ class MeSerializer(serializers.Serializer):
             user=instance,
             defaults={"timezone": instance.timezone},
         )
+        was_onboarded = profile.has_completed_onboarding
         for field_name, value in validated_data.items():
             setattr(profile, field_name, value)
             if field_name == "timezone":
@@ -255,6 +349,10 @@ class MeSerializer(serializers.Serializer):
         if "timezone" in validated_data:
             instance.save(update_fields=("timezone", "updated_at"))
         profile.save()
+        if profile.has_completed_onboarding and not was_onboarded:
+            from nutrition.targets import save_initial_estimate
+
+            save_initial_estimate(profile)
         return instance
 
 

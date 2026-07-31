@@ -45,7 +45,7 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
       body: reviewState.when(
         data: _buildReview,
         error: (error, _) => ErrorPanel(
-          message: error.toString(),
+          message: friendlyErrorMessage(error),
           onRetry: () => ref.invalidate(photoReviewProvider(widget.analysisId)),
         ),
         loading: () => const _ReviewLoadingState(),
@@ -137,6 +137,7 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
       backgroundColor: NovaColors.panel,
       builder: (_) => _ManualPhotoFoodSheet(
         analysisId: widget.analysisId,
+        mealType: _mealType,
       ),
     );
     if (added == true) {
@@ -161,7 +162,7 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
+        SnackBar(content: Text(friendlyErrorMessage(error))),
       );
     }
   }
@@ -525,6 +526,16 @@ class _PhotoFoodTileState extends ConsumerState<_PhotoFoodTile> {
               style: const TextStyle(color: NovaColors.graphite),
             ),
           ],
+          if (item.estimateRangeLabel.isNotEmpty) ...[
+            const SizedBox(height: NovaSpacing.sm),
+            Text(
+              'AI portion range: ${item.estimateRangeLabel}',
+              style: const TextStyle(
+                color: NovaColors.gold,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
           const SizedBox(height: NovaSpacing.lg),
           _FoodNutritionStrip(item: item),
           const SizedBox(height: NovaSpacing.lg),
@@ -590,6 +601,29 @@ class _PhotoFoodTileState extends ConsumerState<_PhotoFoodTile> {
             _WarningWrap(warnings: item.warnings),
           ],
           const SizedBox(height: NovaSpacing.md),
+          DropdownButtonFormField<double>(
+            key: ValueKey('eaten-${item.id}-${item.eatenPercentage}'),
+            initialValue:
+                [25.0, 50.0, 75.0, 100.0].contains(item.eatenPercentage)
+                    ? item.eatenPercentage
+                    : 100,
+            decoration: const InputDecoration(
+              labelText: 'How much did you eat?',
+              prefixIcon: Icon(Icons.pie_chart_outline),
+            ),
+            items: const [
+              DropdownMenuItem(value: 100, child: Text('All (100%)')),
+              DropdownMenuItem(value: 75, child: Text('About 75%')),
+              DropdownMenuItem(value: 50, child: Text('Half (50%)')),
+              DropdownMenuItem(value: 25, child: Text('About 25%')),
+            ],
+            onChanged: item.isRemoved || _busy
+                ? null
+                : (value) {
+                    if (value != null) _changeEatenPercentage(value);
+                  },
+          ),
+          const SizedBox(height: NovaSpacing.md),
           Row(
             children: [
               Expanded(
@@ -612,6 +646,14 @@ class _PhotoFoodTileState extends ConsumerState<_PhotoFoodTile> {
               ),
             ],
           ),
+          if (!item.isRemoved) ...[
+            const SizedBox(height: NovaSpacing.sm),
+            NovaButton.secondary(
+              label: 'Split into separate foods',
+              icon: Icons.call_split_outlined,
+              onPressed: _busy ? null : () => _splitItem(item),
+            ),
+          ],
         ],
       ),
     );
@@ -639,6 +681,26 @@ class _PhotoFoodTileState extends ConsumerState<_PhotoFoodTile> {
             unit: unit,
           );
     });
+  }
+
+  Future<void> _changeEatenPercentage(double percentage) async {
+    await _mutate(() async {
+      await ref.read(nutritionRepositoryProvider).applyEatenPercentage(
+            widget.item.id,
+            percentage,
+          );
+    });
+  }
+
+  Future<void> _splitItem(PhotoReviewItem item) async {
+    final split = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: NovaColors.panel,
+      builder: (_) => _SplitPhotoFoodSheet(item: item),
+    );
+    if (split == true) widget.onChanged();
   }
 
   Future<void> _toggleRemoved(PhotoReviewItem item) async {
@@ -730,7 +792,7 @@ class _PhotoFoodTileState extends ConsumerState<_PhotoFoodTile> {
     } catch (error) {
       if (context.mounted) {
         messenger.showSnackBar(
-          SnackBar(content: Text(error.toString())),
+          SnackBar(content: Text(friendlyErrorMessage(error))),
         );
       }
     } finally {
@@ -1076,10 +1138,211 @@ class _ConfirmMealCard extends StatelessWidget {
   }
 }
 
+class _SplitPhotoFoodSheet extends ConsumerStatefulWidget {
+  const _SplitPhotoFoodSheet({required this.item});
+
+  final PhotoReviewItem item;
+
+  @override
+  ConsumerState<_SplitPhotoFoodSheet> createState() =>
+      _SplitPhotoFoodSheetState();
+}
+
+class _SplitPhotoFoodSheetState extends ConsumerState<_SplitPhotoFoodSheet> {
+  final _query = TextEditingController();
+  final _selected = <FoodSummary>[];
+  final _grams = <String, TextEditingController>{};
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _query.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    _query
+      ..removeListener(_refresh)
+      ..dispose();
+    for (final controller in _grams.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query.text.trim();
+    final results = query.isEmpty
+        ? const AsyncValue<List<FoodSummary>>.data([])
+        : ref.watch(foodSearchProvider(query));
+    final inset = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, inset + 20),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SectionHeader(title: 'Split ${widget.item.name}'),
+              const SizedBox(height: NovaSpacing.sm),
+              const Text(
+                'Choose at least two separate foods. The original AI item stays in history as removed.',
+                style: TextStyle(color: NovaColors.graphite),
+              ),
+              const SizedBox(height: NovaSpacing.md),
+              TextField(
+                controller: _query,
+                decoration: const InputDecoration(
+                  labelText: 'Search a food to add',
+                  prefixIcon: Icon(Icons.search),
+                ),
+              ),
+              const SizedBox(height: NovaSpacing.sm),
+              SizedBox(
+                height: query.isEmpty ? 0 : 180,
+                child: results.when(
+                  data: (foods) => ListView.builder(
+                    itemCount: foods.length,
+                    itemBuilder: (context, index) {
+                      final food = foods[index];
+                      final already =
+                          _selected.any((item) => item.id == food.id);
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(food.name),
+                        trailing: Icon(
+                          already
+                              ? Icons.check_circle
+                              : Icons.add_circle_outline,
+                          color: already ? NovaColors.mint : NovaColors.blue,
+                        ),
+                        onTap: already ? null : () => _add(food),
+                      );
+                    },
+                  ),
+                  error: (error, _) => ErrorPanel(
+                    message: friendlyErrorMessage(error),
+                    onRetry: () => query.isEmpty
+                        ? ref.invalidate(recentFoodsProvider)
+                        : ref.invalidate(foodSearchProvider(query)),
+                  ),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                ),
+              ),
+              if (_selected.isNotEmpty) ...[
+                const SizedBox(height: NovaSpacing.md),
+                const Text(
+                  'Foods and grams',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: NovaSpacing.sm),
+                for (final food in _selected)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: NovaSpacing.sm),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(food.name)),
+                        SizedBox(
+                          width: 100,
+                          child: TextField(
+                            controller: _grams[food.id],
+                            keyboardType: TextInputType.number,
+                            decoration:
+                                const InputDecoration(labelText: 'grams'),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove',
+                          onPressed: () => _remove(food),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+              const SizedBox(height: NovaSpacing.lg),
+              NovaButton.primary(
+                label: _saving ? 'Splitting...' : 'Apply split',
+                icon: Icons.call_split_outlined,
+                onPressed: _selected.length < 2 || _saving ? null : _saveSplit,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  void _add(FoodSummary food) {
+    final defaultGrams = widget.item.grams > 0
+        ? widget.item.grams / (_selected.length + 2)
+        : food.defaultServingGrams;
+    setState(() {
+      _selected.add(food);
+      _grams[food.id] = TextEditingController(
+        text: defaultGrams > 0 ? defaultGrams.toStringAsFixed(0) : '',
+      );
+      _query.clear();
+    });
+  }
+
+  void _remove(FoodSummary food) {
+    setState(() {
+      _selected.removeWhere((item) => item.id == food.id);
+      _grams.remove(food.id)?.dispose();
+    });
+  }
+
+  Future<void> _saveSplit() async {
+    final items = <Map<String, dynamic>>[];
+    for (final food in _selected) {
+      final grams = double.tryParse(_grams[food.id]?.text ?? '') ?? 0;
+      if (grams <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Enter grams for ${food.name}.')),
+        );
+        return;
+      }
+      items.add({
+        'food_id': food.id,
+        'quantity_value': grams,
+        'quantity_unit': 'gram',
+        'total_grams': grams,
+      });
+    }
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(nutritionRepositoryProvider)
+          .splitPhotoFood(widget.item.id, items);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
+    }
+  }
+}
+
 class _ManualPhotoFoodSheet extends ConsumerStatefulWidget {
-  const _ManualPhotoFoodSheet({required this.analysisId});
+  const _ManualPhotoFoodSheet({
+    required this.analysisId,
+    required this.mealType,
+  });
 
   final String analysisId;
+  final String mealType;
 
   @override
   ConsumerState<_ManualPhotoFoodSheet> createState() =>
@@ -1207,7 +1470,7 @@ class _ManualPhotoFoodSheetState extends ConsumerState<_ManualPhotoFoodSheet> {
                     );
                   },
                   error: (error, _) => ErrorPanel(
-                    message: error.toString(),
+                    message: friendlyErrorMessage(error),
                     onRetry: () => query.isEmpty
                         ? ref.invalidate(recentFoodsProvider)
                         : ref.invalidate(foodSearchProvider(query)),
@@ -1270,6 +1533,12 @@ class _ManualPhotoFoodSheetState extends ConsumerState<_ManualPhotoFoodSheet> {
                 onPressed:
                     _selectedFood == null || _saving ? null : _saveManualFood,
               ),
+              const SizedBox(height: NovaSpacing.sm),
+              NovaButton.secondary(
+                label: 'Create custom food here',
+                icon: Icons.edit_note_outlined,
+                onPressed: _saving ? null : _createCustomFoodAndAdd,
+              ),
             ],
           ),
         ),
@@ -1311,7 +1580,37 @@ class _ManualPhotoFoodSheetState extends ConsumerState<_ManualPhotoFoodSheet> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
+    }
+  }
+
+  Future<void> _createCustomFoodAndAdd() async {
+    final food = await context.push<FoodDetail>(
+      Uri(
+        path: '/foods/custom',
+        queryParameters: {
+          'meal_type': widget.mealType,
+          'return_to': 'photo',
+        },
+      ).toString(),
+    );
+    if (food == null || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(nutritionRepositoryProvider).addManualPhotoFood(
+            analysisId: widget.analysisId,
+            foodId: food.id,
+            quantity: 1,
+            unit: 'serving',
+            totalGrams: food.defaultServingG,
+          );
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
       );
     }
   }

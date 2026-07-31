@@ -67,7 +67,7 @@ void main() {
       Exception('The connection errored: XMLHttpRequest onError callback'),
     );
 
-    expect(message, contains('Could not reach the backend'));
+    expect(message, contains('could not connect to LaPulgaFit'));
     expect(message, isNot(contains('XMLHttpRequest')));
   });
 }

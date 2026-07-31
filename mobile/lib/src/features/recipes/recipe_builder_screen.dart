@@ -85,7 +85,7 @@ class _RecipeBuilderScreenState extends ConsumerState<RecipeBuilderScreen> {
             results: _searchResults,
             onSearch: _searchFoods,
             onAdd: _addIngredient,
-            onCreateCustom: () => context.go('/foods/custom'),
+            onCreateCustom: () => context.push('/foods/custom'),
           ),
           const SizedBox(height: NovaSpacing.lg),
           _IngredientList(
@@ -152,7 +152,9 @@ class _RecipeBuilderScreenState extends ConsumerState<RecipeBuilderScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _searching = false);
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     }
   }
 
@@ -206,7 +208,9 @@ class _RecipeBuilderScreenState extends ConsumerState<RecipeBuilderScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     }
   }
 
@@ -230,7 +234,9 @@ class _RecipeBuilderScreenState extends ConsumerState<RecipeBuilderScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _logging = false);
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     }
   }
 

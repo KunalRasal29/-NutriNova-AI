@@ -42,9 +42,7 @@ class BodyMetricSerializer(serializers.ModelSerializer):
             for field in metric_fields
         )
         if not has_metric:
-            raise serializers.ValidationError(
-                "Add at least one body metric value."
-            )
+            raise serializers.ValidationError("Add at least one body metric value.")
 
         for field in metric_fields:
             value = attrs.get(field)

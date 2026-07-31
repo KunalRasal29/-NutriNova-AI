@@ -84,6 +84,45 @@ class UserProfile(TimeStampedModel):
     target_weight_kg = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True
     )
+    daily_calorie_target_kcal = models.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+    daily_protein_target_g = models.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+    daily_carbs_target_g = models.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+    daily_fat_target_g = models.DecimalField(
+        max_digits=6,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+    daily_fiber_target_g = models.DecimalField(
+        max_digits=5,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+    daily_water_target_ml = models.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+    nutrition_targets_customized = models.BooleanField(default=False)
+    nutrition_target_method = models.CharField(max_length=64, blank=True)
+    nutrition_targets_calculated_at = models.DateTimeField(null=True, blank=True)
     timezone = models.CharField(max_length=64, default="UTC")
     country = models.CharField(max_length=2, default="IN")
     has_completed_onboarding = models.BooleanField(default=False)

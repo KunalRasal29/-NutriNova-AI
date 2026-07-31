@@ -9,7 +9,6 @@ from foods.importers import (
 )
 from foods.models import Food
 
-
 POPULAR_FOODS = [
     {
         "canonical_name": "Chicken breast, raw, skinless",
@@ -4365,7 +4364,11 @@ POPULAR_FOODS.extend(
             "IN",
             "1 piece",
             "150.00",
-            ["dry tandoori chicken breast", "tandoori chicken breast", "chicken tikka dry"],
+            [
+                "dry tandoori chicken breast",
+                "tandoori chicken breast",
+                "chicken tikka dry",
+            ],
             "175.0000",
             "28.0000",
             "2.0000",

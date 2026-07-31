@@ -13,6 +13,7 @@ class AnalyticsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final report = ref.watch(progressReportProvider);
+    final smartReport = ref.watch(weeklyBetaReportProvider);
     return NovaScaffold(
       title: 'Progress',
       body: report.when(
@@ -27,6 +28,14 @@ class AnalyticsScreen extends ConsumerWidget {
             ),
             children: [
               _ProgressHeader(report: data),
+              const SizedBox(height: NovaSpacing.lg),
+              smartReport.when(
+                data: (value) => _SmartScoreCard(report: value),
+                error: (_, __) => const SizedBox.shrink(),
+                loading: () => const NovaCard(
+                  child: LinearProgressIndicator(),
+                ),
+              ),
               const SizedBox(height: NovaSpacing.lg),
               _WeeklySummary(report: data),
               const SizedBox(height: NovaSpacing.lg),
@@ -43,13 +52,93 @@ class AnalyticsScreen extends ConsumerWidget {
           ),
         ),
         error: (error, _) => ErrorPanel(
-          message: error.toString(),
+          message: friendlyErrorMessage(error),
           onRetry: () => ref.invalidate(progressReportProvider),
         ),
         loading: () => const LoadingList(),
       ),
     );
   }
+}
+
+class _SmartScoreCard extends StatelessWidget {
+  const _SmartScoreCard({required this.report});
+
+  final Map<String, dynamic> report;
+
+  @override
+  Widget build(BuildContext context) {
+    final score =
+        Map<String, dynamic>.from(report['score'] as Map? ?? const {});
+    final suggestions = report['suggestions'] as List<dynamic>? ?? const [];
+    final overall = _scoreNumber(score['overall']).round();
+    return NovaCard(
+      color: NovaColors.ink,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: NovaColors.mint),
+              const SizedBox(width: NovaSpacing.md),
+              Expanded(
+                child: Text(
+                  'Weekly wellness score',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ),
+              Text(
+                '$overall',
+                style: const TextStyle(
+                  color: NovaColors.mint,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          Text(
+            score['explanation']?.toString() ??
+                'Built from your own logged meals and habits.',
+            style: const TextStyle(color: Colors.white70),
+          ),
+          if (suggestions.isNotEmpty) ...[
+            const SizedBox(height: NovaSpacing.md),
+            for (final raw in suggestions)
+              Padding(
+                padding: const EdgeInsets.only(bottom: NovaSpacing.sm),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.arrow_forward,
+                      size: 18,
+                      color: NovaColors.gold,
+                    ),
+                    const SizedBox(width: NovaSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        (raw as Map)['message']?.toString() ?? '',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+double _scoreNumber(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
 class _ProgressHeader extends StatelessWidget {

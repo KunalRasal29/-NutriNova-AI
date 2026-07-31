@@ -20,6 +20,10 @@ class MealLogItemSerializer(serializers.ModelSerializer):
     serving_name = serializers.CharField(source="serving.serving_name", read_only=True)
     food_source = serializers.SerializerMethodField()
     food_verified = serializers.BooleanField(source="food.verified", read_only=True)
+    food_preparation_state = serializers.CharField(
+        source="food.preparation_state",
+        read_only=True,
+    )
     food_data_classification = serializers.SerializerMethodField()
 
     class Meta:
@@ -32,6 +36,7 @@ class MealLogItemSerializer(serializers.ModelSerializer):
             "brand_name",
             "food_source",
             "food_verified",
+            "food_preparation_state",
             "food_data_classification",
             "quantity",
             "unit",
@@ -54,6 +59,7 @@ class MealLogItemSerializer(serializers.ModelSerializer):
             "serving_name",
             "food_source",
             "food_verified",
+            "food_preparation_state",
             "food_data_classification",
             "calories_kcal",
             "macros_snapshot",
@@ -322,12 +328,12 @@ class QuickAddTextConfirmSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request:
-            self.fields["items"].child.fields["food_id"].queryset = (
-                visible_foods_for_user(request.user).prefetch_related(
-                    "servings",
-                    "nutrients__nutrient",
-                    "nutrients__source",
-                )
+            self.fields["items"].child.fields[
+                "food_id"
+            ].queryset = visible_foods_for_user(request.user).prefetch_related(
+                "servings",
+                "nutrients__nutrient",
+                "nutrients__source",
             )
 
     def validate(self, attrs):

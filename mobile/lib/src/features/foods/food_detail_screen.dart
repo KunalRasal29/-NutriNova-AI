@@ -114,9 +114,39 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
                 verified: food.verified,
                 classification: food.dataClassification,
               ),
+              if (food.preparationState != 'unspecified') ...[
+                const SizedBox(height: NovaSpacing.sm),
+                NovaBadge(
+                  label: _preparationLabel(food.preparationState),
+                  icon: Icons.soup_kitchen_outlined,
+                  color: NovaColors.blue,
+                ),
+              ],
               if (food.description.isNotEmpty) ...[
                 const SizedBox(height: NovaSpacing.md),
                 Text(food.description),
+              ],
+              if (food.ingredientsText.isNotEmpty) ...[
+                const SizedBox(height: NovaSpacing.md),
+                Text(
+                  'Ingredients',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: NovaSpacing.xs),
+                Text(food.ingredientsText),
+              ],
+              if (food.allergens.isNotEmpty) ...[
+                const SizedBox(height: NovaSpacing.md),
+                Text(
+                  'Allergens: ${food.allergens.join(', ')}',
+                  style: const TextStyle(
+                    color: NovaColors.coral,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ],
             ],
           ),
@@ -610,7 +640,11 @@ List<_ServingChoice> _servingChoicesFor(FoodDetail food) {
   addFromServing('slice', 'Slice', {'slice', 'slices'});
   addFromServing('bowl', 'Bowl', {'bowl', 'katori'});
   addFromServing('cup', 'Cup', {'cup', 'cups'});
+  addFromServing('glass', 'Glass', {'glass', 'glasses'});
+  addFromServing('tablespoon', 'Tablespoon', {'tablespoon', 'tbsp'});
+  addFromServing('teaspoon', 'Teaspoon', {'teaspoon', 'tsp'});
   addFromServing('scoop', 'Scoop', {'scoop'});
+  addFromServing('packet', 'Packet', {'packet', 'pack', 'package'});
 
   if (text.contains('egg')) {
     choices.add(const _ServingChoice(unit: 'egg', label: 'Egg', grams: 50));
@@ -637,6 +671,17 @@ List<_ServingChoice> _servingChoicesFor(FoodDetail food) {
       _ServingChoice(unit: 'piece', label: 'Piece', grams: defaultGrams),
     );
   }
+  if (text.contains('chapati') ||
+      text.contains('roti') ||
+      text.contains('phulka')) {
+    choices.add(
+      _ServingChoice(
+        unit: 'piece',
+        label: 'Chapati / roti',
+        grams: defaultGrams,
+      ),
+    );
+  }
   if (text.contains('cup')) {
     choices.add(const _ServingChoice(unit: 'cup', label: 'Cup', grams: 240));
   }
@@ -645,11 +690,45 @@ List<_ServingChoice> _servingChoicesFor(FoodDetail food) {
       _ServingChoice(unit: 'bowl', label: 'Bowl', grams: defaultGrams),
     );
   }
+  if (text.contains('milk') ||
+      text.contains('juice') ||
+      text.contains('water') ||
+      text.contains('drink') ||
+      text.contains('soup')) {
+    choices
+        .add(const _ServingChoice(unit: 'ml', label: 'Millilitres', grams: 1));
+    choices
+        .add(const _ServingChoice(unit: 'glass', label: 'Glass', grams: 240));
+  }
+  if (text.contains('oil') || text.contains('ghee') || text.contains('sauce')) {
+    choices.add(
+      const _ServingChoice(
+        unit: 'tablespoon',
+        label: 'Tablespoon',
+        grams: 15,
+      ),
+    );
+    choices.add(
+      const _ServingChoice(unit: 'teaspoon', label: 'Teaspoon', grams: 5),
+    );
+  }
+  if (food.brand.isNotEmpty || food.preparationState == 'as_sold') {
+    choices.add(
+      _ServingChoice(unit: 'packet', label: 'Packet', grams: defaultGrams),
+    );
+  }
 
   final seen = <String>{};
   return [
     for (final choice in choices)
-      if (seen.add(choice.unit)) choice,
+      if (seen.add(choice.unit))
+        _ServingChoice(
+          unit: choice.unit,
+          label: food.personalPortionGrams.containsKey(choice.unit)
+              ? '${choice.label} (your usual)'
+              : choice.label,
+          grams: food.personalPortionGrams[choice.unit] ?? choice.grams,
+        ),
   ];
 }
 
@@ -689,7 +768,16 @@ String _amountLabel({
   }
   if (unit == 'gram') return '${gramsText}g total';
   final perUnit = _formatAmount(choice.grams);
-  return '$quantityText ${choice.label.toLowerCase()} x ${perUnit}g = ${gramsText}g';
+  final estimated = {
+    'bowl',
+    'cup',
+    'glass',
+    'tablespoon',
+    'teaspoon',
+  }.contains(unit);
+  final suffix = estimated ? ' estimate — confirm grams if possible' : '';
+  return '$quantityText ${choice.label.toLowerCase()} x ${perUnit}g = '
+      '${gramsText}g$suffix';
 }
 
 String _formatAmount(double value) {
@@ -703,6 +791,21 @@ String _mealLabel(String mealType) {
       .map((part) =>
           part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
       .join(' ');
+}
+
+String _preparationLabel(String state) {
+  switch (state) {
+    case 'raw':
+      return 'Raw';
+    case 'cooked':
+      return 'Cooked';
+    case 'prepared':
+      return 'Prepared dish';
+    case 'as_sold':
+      return 'As sold / packaged';
+    default:
+      return 'Preparation not specified';
+  }
 }
 
 class _ServingList extends StatelessWidget {

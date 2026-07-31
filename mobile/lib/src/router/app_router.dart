@@ -8,8 +8,10 @@ import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/barcode/barcode_scan_screen.dart';
 import '../features/body/log_weight_screen.dart';
+import '../features/community/friends_beta_screen.dart';
 import '../features/dashboard/home_dashboard_screen.dart';
 import '../features/foods/create_custom_food_screen.dart';
+import '../features/foods/custom_food_management_screen.dart';
 import '../features/foods/food_detail_screen.dart';
 import '../features/foods/food_search_screen.dart';
 import '../features/habits/habit_grid_screen.dart';
@@ -19,8 +21,10 @@ import '../features/meals/quick_add_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/photos/photo_review_screen.dart';
 import '../features/photos/photo_scan_screen.dart';
+import '../features/photos/nutrition_label_scan_screen.dart';
 import '../features/profile/profile_settings_screen.dart';
 import '../features/recipes/recipe_builder_screen.dart';
+import '../features/tracking/daily_tracking_screen.dart';
 import 'splash_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -36,7 +40,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final location = state.matchedLocation;
       final isAuthRoute = location == '/login' || location == '/register';
       if (authState.isLoading) {
-        return location == '/splash' ? null : '/splash';
+        return location == '/splash' || isAuthRoute ? null : '/splash';
       }
       if (user == null && !isAuthRoute) return '/login';
       if (user != null && !user.hasCompletedOnboarding) {
@@ -61,14 +65,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           initialMealType: state.uri.queryParameters['meal_type'] ?? 'lunch',
         ),
       ),
-      GoRoute(
-        path: '/foods/:id',
-        builder: (_, state) => FoodDetailScreen(
-          foodId: state.pathParameters['id'] ?? '',
-          initialMealType:
-              state.uri.queryParameters['meal_type'] ?? 'breakfast',
-        ),
-      ),
       GoRoute(path: '/meals', builder: (_, __) => const MealLogScreen()),
       GoRoute(
         path: '/meals/manual',
@@ -88,6 +84,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/foods/custom',
         builder: (_, state) => CreateCustomFoodScreen(
           initialBarcode: state.uri.queryParameters['barcode'] ?? '',
+          initialName: state.uri.queryParameters['name'] ?? '',
+          initialMealType:
+              state.uri.queryParameters['meal_type'] ?? 'breakfast',
+          returnTo: state.uri.queryParameters['return_to'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/foods/custom/manage',
+        builder: (_, __) => const CustomFoodManagementScreen(),
+      ),
+      GoRoute(
+        path: '/foods/custom/:id/edit',
+        builder: (_, state) => CreateCustomFoodScreen(
+          foodId: state.pathParameters['id'] ?? '',
+          initialMealType:
+              state.uri.queryParameters['meal_type'] ?? 'breakfast',
+          returnTo: 'manage',
+        ),
+      ),
+      GoRoute(
+        path: '/foods/custom/:id/duplicate',
+        builder: (_, state) => CreateCustomFoodScreen(
+          duplicateFromId: state.pathParameters['id'] ?? '',
+          initialMealType:
+              state.uri.queryParameters['meal_type'] ?? 'breakfast',
+          returnTo: 'manage',
+        ),
+      ),
+      GoRoute(
+        path: '/foods/:id',
+        builder: (_, state) => FoodDetailScreen(
+          foodId: state.pathParameters['id'] ?? '',
           initialMealType:
               state.uri.queryParameters['meal_type'] ?? 'breakfast',
         ),
@@ -117,6 +145,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/habits', builder: (_, __) => const HabitGridScreen()),
       GoRoute(path: '/analytics', builder: (_, __) => const AnalyticsScreen()),
       GoRoute(path: '/weight/log', builder: (_, __) => const LogWeightScreen()),
+      GoRoute(
+        path: '/tracking',
+        builder: (_, __) => const DailyTrackingScreen(),
+      ),
+      GoRoute(
+        path: '/friends',
+        builder: (_, __) => const FriendsBetaScreen(),
+      ),
+      GoRoute(
+        path: '/labels/scan',
+        builder: (_, __) => const NutritionLabelScanScreen(),
+      ),
       GoRoute(
           path: '/profile', builder: (_, __) => const ProfileSettingsScreen()),
     ],

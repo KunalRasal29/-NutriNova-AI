@@ -39,15 +39,35 @@ class Command(BaseCommand):
             ],
             default=NutritionDataSource.SourceType.IFCT_2017,
         )
+        parser.add_argument(
+            "--license-confirmed",
+            action="store_true",
+            help=(
+                "Confirm the project owner has permission to use/distribute this file."
+            ),
+        )
+        parser.add_argument("--release-version", default="")
 
     def handle(self, *args, **options):
         seed_core_reference_data()
         path = Path(options["path"])
         if not path.exists():
             raise CommandError(f"CSV file not found: {path}")
+        if not options["license_confirmed"]:
+            raise CommandError(
+                "Indian dataset import is blocked until --license-confirmed is "
+                "provided. IFCT electronic product use requires permission; verify "
+                "the exact licence for every supplied file."
+            )
 
         source = get_data_source(options["source"])
-        job = create_import_job(source, file_name=str(path))
+        job = create_import_job(
+            source,
+            file_name=str(path),
+            dataset_type=Food.DatasetType.INDIAN_LICENSED,
+            release_version=options["release_version"],
+            metadata={"license_confirmed": True},
+        )
         result = ImportResult(errors=[])
         nutrient_columns = {
             "calories_kcal": "calories",
@@ -79,6 +99,8 @@ class Command(BaseCommand):
                         external_id=row.get("source_external_id", ""),
                         description=f"Imported Indian food from {source.name}.",
                         food_type=Food.FoodType.GENERIC,
+                        dataset_type=Food.DatasetType.INDIAN_LICENSED,
+                        dataset_release=options["release_version"],
                         country_code="IN",
                         language_code="en",
                         serving_description=row.get("serving_g", "") and "Serving",

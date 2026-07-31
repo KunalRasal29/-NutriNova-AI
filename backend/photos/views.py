@@ -15,12 +15,15 @@ from photos.serializers import (
     ConfirmLabelFoodResponseSerializer,
     ConfirmPhotoMealResponseSerializer,
     ConfirmPhotoMealSerializer,
+    EatenPercentageSerializer,
     ManualPhotoFoodAddSerializer,
     MatchFoodsResponseSerializer,
+    NutritionLabelScanSerializer,
     PhotoAnalysisDetailSerializer,
     PhotoAnalysisUploadSerializer,
     PhotoDetectedFoodUpdateSerializer,
     PhotoReviewResponseSerializer,
+    SplitDetectedFoodSerializer,
 )
 from photos.services import (
     add_manual_food_to_analysis,
@@ -31,6 +34,7 @@ from photos.services import (
     increment_detected_food,
     match_detected_foods,
     recalculate_analysis_preview,
+    split_detected_food,
     update_detected_food,
 )
 from photos.services.photo_nutrition_preview import review_payload
@@ -243,6 +247,18 @@ class ConfirmLabelAsFoodView(PhotoAnalysisBaseView):
     )
     def post(self, request, *args, **kwargs):
         analysis = self.get_object()
+        if not hasattr(analysis, "nutrition_label_scan"):
+            return Response(
+                {"detail": "The label analysis has not finished yet."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        update_serializer = NutritionLabelScanSerializer(
+            analysis.nutrition_label_scan,
+            data=request.data,
+            partial=True,
+        )
+        update_serializer.is_valid(raise_exception=True)
+        update_serializer.save()
         food = confirm_label_as_food(analysis)
         return Response(
             {
@@ -306,5 +322,39 @@ class DecrementDetectedFoodView(PhotoDetectedFoodBaseView):
     def post(self, request, *args, **kwargs):
         detected = self.get_object()
         decrement_detected_food(detected)
+        detected.photo_analysis.refresh_from_db()
+        return Response(review_payload(detected.photo_analysis, request=request))
+
+
+class SplitDetectedFoodView(PhotoDetectedFoodBaseView):
+    serializer_class = SplitDetectedFoodSerializer
+
+    @extend_schema(
+        tags=["photos"],
+        request=SplitDetectedFoodSerializer,
+        responses={200: PhotoReviewResponseSerializer},
+    )
+    def post(self, request, *args, **kwargs):
+        detected = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        split_detected_food(detected, serializer.validated_data["items"])
+        detected.photo_analysis.refresh_from_db()
+        return Response(review_payload(detected.photo_analysis, request=request))
+
+
+class ApplyEatenPercentageView(PhotoDetectedFoodBaseView):
+    serializer_class = EatenPercentageSerializer
+
+    @extend_schema(
+        tags=["photos"],
+        request=EatenPercentageSerializer,
+        responses={200: PhotoReviewResponseSerializer},
+    )
+    def post(self, request, *args, **kwargs):
+        detected = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        update_detected_food(detected, serializer.validated_data)
         detected.photo_analysis.refresh_from_db()
         return Response(review_payload(detected.photo_analysis, request=request))

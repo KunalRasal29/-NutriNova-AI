@@ -1,7 +1,10 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../theme/nova_theme.dart';
+import '../network/network_status.dart';
 
 class NovaScaffold extends StatelessWidget {
   const NovaScaffold({
@@ -26,10 +29,181 @@ class NovaScaffold extends StatelessWidget {
     return Scaffold(
       extendBody: true,
       appBar: _NovaTopBar(title: title, actions: actions),
-      body: SafeArea(child: _MobileFrame(child: body)),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: NovaColors.backgroundGradient,
+        ),
+        child: SafeArea(
+          child: _MobileFrame(
+            child: Column(
+              children: [
+                ValueListenableBuilder<bool>(
+                  valueListenable: NetworkStatus.instance.isOffline,
+                  builder: (context, isOffline, _) => isOffline
+                      ? Container(
+                          width: double.infinity,
+                          color: NovaColors.gold,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: NovaSpacing.md,
+                            vertical: NovaSpacing.sm,
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.cloud_off_outlined, size: 18),
+                              SizedBox(width: NovaSpacing.sm),
+                              Flexible(
+                                child: Text(
+                                  'Offline - your form is kept. Reconnect and try again.',
+                                  style: TextStyle(fontWeight: FontWeight.w900),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                Expanded(child: body),
+              ],
+            ),
+          ),
+        ),
+      ),
       bottomNavigationBar: bottomNavigationBar ??
           (showBottomNavigation ? const _NovaBottomBar() : null),
       floatingActionButton: floatingActionButton,
+    );
+  }
+}
+
+class NovaAuthScaffold extends StatelessWidget {
+  const NovaAuthScaffold({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    super.key,
+    this.eyebrow = 'NUTRINOVA AI',
+    this.footer,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String subtitle;
+  final Widget child;
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              NovaColors.ink,
+              NovaColors.surface,
+              Color(0xFF101C31),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: constraints.maxWidth < 520
+                    ? NovaSpacing.lg
+                    : NovaSpacing.xxl,
+                vertical: NovaSpacing.xl,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - (NovaSpacing.xl * 2),
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Align(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [NovaColors.mint, NovaColors.blue],
+                              ),
+                              borderRadius:
+                                  BorderRadius.circular(NovaRadius.lg),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: NovaColors.mint.withValues(alpha: 0.2),
+                                  blurRadius: 28,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: const SizedBox.square(
+                              dimension: 68,
+                              child: Icon(
+                                Icons.bolt_rounded,
+                                color: NovaColors.ink,
+                                size: 38,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: NovaSpacing.xl),
+                        Text(
+                          eyebrow,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: NovaColors.mint,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.8,
+                          ),
+                        ),
+                        const SizedBox(height: NovaSpacing.sm),
+                        Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.5,
+                              ),
+                        ),
+                        const SizedBox(height: NovaSpacing.sm),
+                        Text(
+                          subtitle,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: NovaColors.graphite,
+                            height: 1.45,
+                          ),
+                        ),
+                        const SizedBox(height: NovaSpacing.xl),
+                        NovaCard(
+                          padding: const EdgeInsets.all(NovaSpacing.xl),
+                          child: child,
+                        ),
+                        if (footer != null) ...[
+                          const SizedBox(height: NovaSpacing.lg),
+                          footer!,
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -41,20 +215,27 @@ class _NovaTopBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => const Size.fromHeight(62);
 
   @override
   Widget build(BuildContext context) {
     final routeCanPop = ModalRoute.of(context)?.canPop ?? false;
-    return ColoredBox(
-      color: NovaColors.ink,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: NovaColors.ink.withValues(alpha: 0.94),
+        border: Border(
+          bottom: BorderSide(
+            color: NovaColors.border.withValues(alpha: 0.72),
+          ),
+        ),
+      ),
       child: SafeArea(
         bottom: false,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: SizedBox(
-              height: kToolbarHeight,
+              height: 62,
               child: IconTheme(
                 data: const IconThemeData(color: Colors.white),
                 child: DefaultTextStyle(
@@ -70,10 +251,21 @@ class _NovaTopBar extends StatelessWidget implements PreferredSizeWidget {
                   child: NavigationToolbar(
                     centerMiddle: true,
                     leading: routeCanPop ? const BackButton() : null,
-                    middle: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    middle: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!routeCanPop) ...[
+                          const _PremiumMark(size: 28),
+                          const SizedBox(width: NovaSpacing.sm),
+                        ],
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     trailing: actions == null
                         ? null
@@ -107,11 +299,14 @@ class _MobileFrame extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: DecoratedBox(
-              decoration: const BoxDecoration(
-                color: NovaColors.surface,
+              decoration: BoxDecoration(
+                gradient: NovaColors.backgroundGradient,
                 border: Border.symmetric(
-                  vertical: BorderSide(color: NovaColors.border),
+                  vertical: BorderSide(
+                    color: NovaColors.border.withValues(alpha: 0.8),
+                  ),
                 ),
+                boxShadow: NovaShadows.card,
               ),
               child: child,
             ),
@@ -141,53 +336,58 @@ class _NovaBottomBar extends StatelessWidget {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: BottomAppBar(
-                  height: 76,
-                  color: NovaColors.ink,
-                  elevation: 0,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _NovaNavItem(
-                          label: 'Dashboard',
-                          icon: Icons.dashboard_outlined,
-                          selectedIcon: Icons.dashboard,
-                          selected: path == '/home',
-                          onTap: () => context.go('/home'),
-                        ),
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                    child: BottomAppBar(
+                      height: 76,
+                      color: NovaColors.ink.withValues(alpha: 0.90),
+                      elevation: 0,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _NovaNavItem(
+                              label: 'Home',
+                              icon: Icons.dashboard_outlined,
+                              selectedIcon: Icons.dashboard,
+                              selected: path == '/home',
+                              onTap: () => context.go('/home'),
+                            ),
+                          ),
+                          Expanded(
+                            child: _NovaNavItem(
+                              label: 'Diary',
+                              icon: Icons.menu_book_outlined,
+                              selectedIcon: Icons.menu_book,
+                              selected: path.startsWith('/meals') ||
+                                  path.startsWith('/foods'),
+                              onTap: () => context.go('/meals'),
+                            ),
+                          ),
+                          const SizedBox(width: 72),
+                          Expanded(
+                            child: _NovaNavItem(
+                              label: 'Progress',
+                              icon: Icons.bar_chart_outlined,
+                              selectedIcon: Icons.bar_chart,
+                              selected: path == '/analytics',
+                              onTap: () => context.go('/analytics'),
+                            ),
+                          ),
+                          Expanded(
+                            child: _NovaNavItem(
+                              label: 'More',
+                              icon: Icons.more_horiz,
+                              selectedIcon: Icons.more_horiz,
+                              selected: path == '/profile' ||
+                                  path == '/habits' ||
+                                  path == '/recipes',
+                              onTap: () => context.go('/profile'),
+                            ),
+                          ),
+                        ],
                       ),
-                      Expanded(
-                        child: _NovaNavItem(
-                          label: 'Diary',
-                          icon: Icons.menu_book_outlined,
-                          selectedIcon: Icons.menu_book,
-                          selected: path.startsWith('/meals') ||
-                              path.startsWith('/foods'),
-                          onTap: () => context.go('/meals'),
-                        ),
-                      ),
-                      const SizedBox(width: 72),
-                      Expanded(
-                        child: _NovaNavItem(
-                          label: 'Progress',
-                          icon: Icons.bar_chart_outlined,
-                          selectedIcon: Icons.bar_chart,
-                          selected: path == '/analytics',
-                          onTap: () => context.go('/analytics'),
-                        ),
-                      ),
-                      Expanded(
-                        child: _NovaNavItem(
-                          label: 'More',
-                          icon: Icons.more_horiz,
-                          selectedIcon: Icons.more_horiz,
-                          selected: path == '/profile' ||
-                              path == '/habits' ||
-                              path == '/recipes',
-                          onTap: () => context.go('/profile'),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -219,10 +419,17 @@ class _NovaNavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = selected ? Colors.white : NovaColors.graphite;
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(NovaRadius.md),
       onTap: onTap,
-      child: SizedBox(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
         height: 64,
+        decoration: BoxDecoration(
+          color: selected
+              ? NovaColors.blue.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(NovaRadius.md),
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -250,19 +457,31 @@ class _NovaAddButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FloatingActionButton.large(
-      tooltip: 'Add',
-      elevation: 0,
-      backgroundColor: NovaColors.blue,
-      foregroundColor: Colors.white,
-      shape: const CircleBorder(),
-      onPressed: () => showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        backgroundColor: NovaColors.panel,
-        builder: (_) => const _NovaAddSheet(),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: NovaColors.premiumGradient,
+        boxShadow: NovaShadows.glow(NovaColors.blue),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
       ),
-      child: const Icon(Icons.add, size: 36),
+      child: FloatingActionButton.large(
+        tooltip: 'Add',
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        shape: const CircleBorder(),
+        onPressed: () => showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          backgroundColor: NovaColors.panel,
+          builder: (_) => const FractionallySizedBox(
+            heightFactor: 0.86,
+            child: _NovaAddSheet(),
+          ),
+        ),
+        child: const Icon(Icons.add_rounded, size: 36),
+      ),
     );
   }
 }
@@ -276,7 +495,6 @@ class _NovaAddSheet extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -286,57 +504,70 @@ class _NovaAddSheet extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: NovaSpacing.md),
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              mainAxisSpacing: NovaSpacing.md,
-              crossAxisSpacing: NovaSpacing.md,
-              childAspectRatio: 2.35,
-              children: [
-                _AddSheetTile(
-                  icon: Icons.search,
-                  label: 'Log food',
-                  color: NovaColors.blue,
-                  onTap: () => _go(context, _withMealType('/foods/search')),
-                ),
-                _AddSheetTile(
-                  icon: Icons.flash_on_outlined,
-                  label: 'Quick add',
-                  color: NovaColors.gold,
-                  onTap: () => _go(context, _withMealType('/meals/quick-add')),
-                ),
-                _AddSheetTile(
-                  icon: Icons.qr_code_scanner,
-                  label: 'Barcode',
-                  color: NovaColors.coral,
-                  onTap: () => _go(context, _withMealType('/barcode')),
-                ),
-                _AddSheetTile(
-                  icon: Icons.camera_alt_outlined,
-                  label: 'Meal scan',
-                  color: NovaColors.mint,
-                  onTap: () => _go(context, _withMealType('/photos/scan')),
-                ),
-                _AddSheetTile(
-                  icon: Icons.add_circle_outline,
-                  label: 'Custom food',
-                  color: NovaColors.violet,
-                  onTap: () => _go(context, _withMealType('/foods/custom')),
-                ),
-                _AddSheetTile(
-                  icon: Icons.monitor_weight_outlined,
-                  label: 'Weight',
-                  color: NovaColors.lime,
-                  onTap: () => _go(context, '/weight/log'),
-                ),
-                _AddSheetTile(
-                  icon: Icons.add_task_outlined,
-                  label: 'Checklist',
-                  color: NovaColors.mint,
-                  onTap: () => _go(context, '/habits'),
-                ),
-              ],
+            Expanded(
+              child: GridView.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: NovaSpacing.md,
+                crossAxisSpacing: NovaSpacing.md,
+                childAspectRatio: 2.35,
+                children: [
+                  _AddSheetTile(
+                    icon: Icons.search,
+                    label: 'Log food',
+                    color: NovaColors.blue,
+                    onTap: () => _go(context, _withMealType('/foods/search')),
+                  ),
+                  _AddSheetTile(
+                    icon: Icons.flash_on_outlined,
+                    label: 'Quick add',
+                    color: NovaColors.gold,
+                    onTap: () =>
+                        _go(context, _withMealType('/meals/quick-add')),
+                  ),
+                  _AddSheetTile(
+                    icon: Icons.qr_code_scanner,
+                    label: 'Barcode',
+                    color: NovaColors.coral,
+                    onTap: () => _go(context, _withMealType('/barcode')),
+                  ),
+                  _AddSheetTile(
+                    icon: Icons.camera_alt_outlined,
+                    label: 'Meal scan',
+                    color: NovaColors.mint,
+                    onTap: () => _go(context, _withMealType('/photos/scan')),
+                  ),
+                  _AddSheetTile(
+                    icon: Icons.add_circle_outline,
+                    label: 'Custom food',
+                    color: NovaColors.violet,
+                    onTap: () => _go(context, _withMealType('/foods/custom')),
+                  ),
+                  _AddSheetTile(
+                    icon: Icons.monitor_weight_outlined,
+                    label: 'Weight',
+                    color: NovaColors.lime,
+                    onTap: () => _go(context, '/weight/log'),
+                  ),
+                  _AddSheetTile(
+                    icon: Icons.add_task_outlined,
+                    label: 'Checklist',
+                    color: NovaColors.mint,
+                    onTap: () => _go(context, '/habits'),
+                  ),
+                  _AddSheetTile(
+                    icon: Icons.track_changes_outlined,
+                    label: 'Daily tracking',
+                    color: NovaColors.blue,
+                    onTap: () => _go(context, '/tracking'),
+                  ),
+                  _AddSheetTile(
+                    icon: Icons.document_scanner_outlined,
+                    label: 'Label scan',
+                    color: NovaColors.gold,
+                    onTap: () => _go(context, '/labels/scan'),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -346,7 +577,7 @@ class _NovaAddSheet extends StatelessWidget {
 
   void _go(BuildContext context, String path) {
     Navigator.of(context).pop();
-    context.go(path);
+    context.push(path);
   }
 }
 
@@ -557,30 +788,51 @@ class PageIntro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return NovaCard(
-      color: NovaColors.ink,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      gradient: NovaColors.heroGradient,
+      accentColor: NovaColors.mint,
+      child: Stack(
         children: [
-          CircleAvatar(
-            backgroundColor: Colors.white.withValues(alpha: 0.12),
-            child: Icon(icon, color: Colors.white),
-          ),
-          const SizedBox(width: NovaSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
-                const SizedBox(height: NovaSpacing.xs),
-                Text(subtitle, style: const TextStyle(color: Colors.white70)),
-              ],
+          Positioned(
+            right: -22,
+            top: -34,
+            child: Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: NovaColors.mint.withValues(alpha: 0.07),
+              ),
             ),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PremiumMark(icon: icon, size: 46),
+              const SizedBox(width: NovaSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.35,
+                          ),
+                    ),
+                    const SizedBox(height: NovaSpacing.xs),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: NovaColors.graphite,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -594,17 +846,38 @@ class NovaCard extends StatelessWidget {
     super.key,
     this.padding = const EdgeInsets.all(NovaSpacing.lg),
     this.color,
+    this.gradient,
+    this.accentColor,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final Color? color;
+  final Gradient? gradient;
+  final Color? accentColor;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: color,
-      child: Padding(padding: padding, child: child),
+    final radius = BorderRadius.circular(NovaRadius.lg);
+    return Container(
+      decoration: BoxDecoration(
+        color: gradient == null ? (color ?? NovaColors.panel) : null,
+        gradient: gradient,
+        borderRadius: radius,
+        border: Border.all(
+          color: (accentColor ?? NovaColors.border).withValues(
+            alpha: accentColor == null ? 0.82 : 0.40,
+          ),
+        ),
+        boxShadow: NovaShadows.card,
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Padding(padding: padding, child: child),
+        ),
+      ),
     );
   }
 }
@@ -644,7 +917,48 @@ class NovaButton extends StatelessWidget {
     if (outlined) {
       return OutlinedButton(onPressed: onPressed, child: child);
     }
-    return ElevatedButton(onPressed: onPressed, child: child);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: onPressed == null
+            ? const LinearGradient(
+                colors: [NovaColors.border, NovaColors.panelRaised],
+              )
+            : NovaColors.premiumGradient,
+        borderRadius: BorderRadius.circular(NovaRadius.md),
+        boxShadow: onPressed == null ? null : NovaShadows.glow(NovaColors.blue),
+      ),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          disabledBackgroundColor: Colors.transparent,
+        ),
+        onPressed: onPressed,
+        child: child,
+      ),
+    );
+  }
+}
+
+class _PremiumMark extends StatelessWidget {
+  const _PremiumMark({this.icon = Icons.bolt_rounded, this.size = 34});
+
+  final IconData icon;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: NovaColors.premiumGradient,
+        borderRadius: BorderRadius.circular(size * 0.32),
+        boxShadow: NovaShadows.glow(NovaColors.mint),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, color: Colors.white, size: size * 0.55),
+    );
   }
 }
 
@@ -653,12 +967,32 @@ String friendlyErrorMessage(Object error) {
   var message = raw
       .replaceFirst(RegExp(r'^ApiException:\s*'), '')
       .replaceFirst(RegExp(r'^Exception:\s*'), '');
-  if (message.contains('XMLHttpRequest') ||
-      message.toLowerCase().contains('connection errored')) {
-    return 'Could not reach the backend. Check that Docker is running, then try again.';
+  message = message
+      .replaceAll(RegExp(r'\bnon_field_errors:\s*', caseSensitive: false), '')
+      .replaceAll(RegExp(r'\bdetail:\s*', caseSensitive: false), '')
+      .replaceAll('_', ' ')
+      .trim();
+  final lower = message.toLowerCase();
+  if (lower.contains('invalid email or password') ||
+      lower.contains('no active account found') ||
+      lower.contains('incorrect credentials')) {
+    return 'The email or password is incorrect. Please try again.';
   }
-  if (message.toLowerCase().contains('socketexception')) {
-    return 'Network connection failed. Check the API base URL and Wi-Fi.';
+  if (lower.contains('authentication credentials were not provided') ||
+      lower.contains('token is invalid') ||
+      lower.contains('token not valid')) {
+    return 'Your session has expired. Please sign in again.';
+  }
+  if (message.contains('XMLHttpRequest') ||
+      lower.contains('connection errored') ||
+      lower.contains('connection refused') ||
+      lower.contains('failed host lookup')) {
+    return 'We could not connect to LaPulgaFit. Check your connection and try again.';
+  }
+  if (lower.contains('socketexception') ||
+      lower.contains('connection timeout') ||
+      lower.contains('receive timeout')) {
+    return 'The connection is taking too long. Check your Wi-Fi and try again.';
   }
   if (message.isEmpty) {
     return 'Something went wrong. Please try again.';
@@ -939,6 +1273,15 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
+        Container(
+          width: 4,
+          height: 22,
+          decoration: BoxDecoration(
+            gradient: NovaColors.premiumGradient,
+            borderRadius: BorderRadius.circular(NovaRadius.pill),
+          ),
+        ),
+        const SizedBox(width: NovaSpacing.sm),
         Expanded(
           child: Text(
             title,

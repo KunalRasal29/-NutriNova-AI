@@ -215,7 +215,9 @@ def test_meal_item_patch_recalculates_and_refreshes_summary(api_client, user, eg
 
 
 @pytest.mark.django_db
-def test_meal_item_delete_removes_item_and_refreshes_summary(api_client, user, egg_food):
+def test_meal_item_delete_removes_item_and_refreshes_summary(
+    api_client, user, egg_food
+):
     api_client.force_authenticate(user=user)
     created = api_client.post(
         reverse("meal-manual-add"),
