@@ -250,13 +250,15 @@ class _CaloriesHero extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                'Calories remaining',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+              Expanded(
+                child: Text(
+                  'Calories remaining',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: NovaSpacing.sm),
               const NovaBadge(
                 label: 'Today',
                 icon: Icons.calendar_today_outlined,
@@ -704,7 +706,8 @@ class _ActionGrid extends StatelessWidget {
             crossAxisCount: 2,
             mainAxisSpacing: NovaSpacing.md,
             crossAxisSpacing: NovaSpacing.md,
-            childAspectRatio: 1.72,
+            mainAxisExtent:
+                120 + MediaQuery.textScalerOf(context).scale(30) - 30,
             children: [
               _QuickActionTile(
                 label: 'Log food',
@@ -983,13 +986,44 @@ class _MealGroup extends StatelessWidget {
   }
 }
 
-class _ChecklistPreview extends ConsumerWidget {
+class _ChecklistPreview extends ConsumerStatefulWidget {
   const _ChecklistPreview({required this.habits});
 
   final List<HabitGridItem> habits;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ChecklistPreview> createState() => _ChecklistPreviewState();
+}
+
+class _ChecklistPreviewState extends ConsumerState<_ChecklistPreview> {
+  final _pendingHabits = <String>{};
+
+  Future<void> _toggle(HabitGridItem habit, bool checked) async {
+    if (_pendingHabits.contains(habit.habitId)) return;
+    setState(() => _pendingHabits.add(habit.habitId));
+    try {
+      final repository = ref.read(nutritionRepositoryProvider);
+      if (checked) {
+        await repository.checkHabit(habit.habitId, habit.targetCount);
+      } else {
+        await repository.uncheckHabit(habit.habitId);
+      }
+      if (!mounted) return;
+      ref.invalidate(todayHabitsProvider);
+      ref.invalidate(habitMonthGridProvider(currentMonthKey()));
+      refreshNutritionSummaries(ref);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
+    } finally {
+      if (mounted) setState(() => _pendingHabits.remove(habit.habitId));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return NovaCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1002,7 +1036,7 @@ class _ChecklistPreview extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: NovaSpacing.sm),
-          if (habits.isEmpty)
+          if (widget.habits.isEmpty)
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1016,23 +1050,13 @@ class _ChecklistPreview extends ConsumerWidget {
               ],
             )
           else
-            ...habits.take(3).map(
+            ...widget.habits.take(3).map(
                   (habit) => CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     value: habit.isCompleted,
-                    onChanged: (checked) async {
-                      final repository = ref.read(nutritionRepositoryProvider);
-                      if (checked == true) {
-                        await repository.checkHabit(
-                          habit.habitId,
-                          habit.targetCount,
-                        );
-                      } else {
-                        await repository.uncheckHabit(habit.habitId);
-                      }
-                      ref.invalidate(dashboardProvider);
-                      ref.invalidate(todayHabitsProvider);
-                    },
+                    onChanged: _pendingHabits.contains(habit.habitId)
+                        ? null
+                        : (checked) => _toggle(habit, checked == true),
                     title: Text(habit.title),
                     subtitle: Text(
                       '${habit.completedCount}/${habit.targetCount} ${habit.unit}',
@@ -1152,7 +1176,7 @@ class _LogWeightSheetState extends ConsumerState<_LogWeightSheet> {
           const SizedBox(height: NovaSpacing.md),
           TextField(
             controller: _weight,
-            keyboardType: TextInputType.number,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Weight kg',
               prefixIcon: Icon(Icons.monitor_weight_outlined),
@@ -1165,10 +1189,16 @@ class _LogWeightSheetState extends ConsumerState<_LogWeightSheet> {
             onPressed: _saving
                 ? null
                 : () async {
+                    if (_saving) return;
                     final value = double.tryParse(_weight.text);
-                    if (value == null || value <= 0) {
+                    if (value == null ||
+                        !value.isFinite ||
+                        value < 25 ||
+                        value > 350) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Enter a valid weight.')),
+                        const SnackBar(
+                            content:
+                                Text('Enter a weight between 25 and 350 kg.')),
                       );
                       return;
                     }
@@ -1177,7 +1207,8 @@ class _LogWeightSheetState extends ConsumerState<_LogWeightSheet> {
                       await ref
                           .read(nutritionRepositoryProvider)
                           .logBodyMetric(weightKg: value);
-                      ref.invalidate(dashboardProvider);
+                      if (!mounted) return;
+                      refreshNutritionSummaries(ref);
                       if (context.mounted) Navigator.of(context).pop();
                     } catch (error) {
                       if (!context.mounted) return;

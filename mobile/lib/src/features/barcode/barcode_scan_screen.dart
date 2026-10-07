@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,7 +20,14 @@ class BarcodeScanScreen extends ConsumerStatefulWidget {
   ConsumerState<BarcodeScanScreen> createState() => _BarcodeScanScreenState();
 }
 
-class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
+class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen>
+    with WidgetsBindingObserver {
+  final _scanner = MobileScannerController(autoStart: false);
+  StreamSubscription<BarcodeCapture>? _captures;
+  bool _cameraBusy = false;
+  Future<void>? _cameraStopInFlight;
+  bool _cameraVisible = true;
+  String? _cameraError;
   final _manualBarcode = TextEditingController();
   final _grams = TextEditingController(text: '100');
   String? _barcode;
@@ -32,13 +41,110 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   void initState() {
     super.initState();
     _mealType = widget.initialMealType;
+    WidgetsBinding.instance.addObserver(this);
+    _captures = _scanner.barcodes.listen((capture) {
+      if (!_cameraVisible || !mounted || _savingFoodId != null) return;
+      final code =
+          capture.barcodes.isEmpty ? null : capture.barcodes.first.rawValue;
+      if (code != null && code != _barcode && !_loading) _lookup(code);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startCamera());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_captures?.cancel());
+    unawaited(_scanner.dispose());
     _manualBarcode.dispose();
     _grams.dispose();
     super.dispose();
+  }
+
+  bool get _canRunCamera =>
+      mounted &&
+      _cameraVisible &&
+      (WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_startCamera());
+    } else {
+      unawaited(_stopCamera());
+    }
+  }
+
+  Future<void> _startCamera() async {
+    if (!_canRunCamera || _cameraBusy || _scanner.value.isRunning) return;
+    _cameraBusy = true;
+    try {
+      await _cameraStopInFlight;
+      if (!_canRunCamera) return;
+      if (_scanner.value.error != null) {
+        _scanner.value = _scanner.value.copyWith(error: null);
+      }
+      setState(() => _cameraError = null);
+      await _scanner.start();
+      if (!_canRunCamera) await _stopCamera();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _cameraError =
+            'Camera unavailable. Enter the barcode below instead.');
+      }
+    } finally {
+      _cameraBusy = false;
+    }
+  }
+
+  Future<void> _stopCamera() async {
+    final pending = _cameraStopInFlight;
+    if (pending != null) {
+      try {
+        await pending;
+      } catch (_) {
+        // The first stop caller already reports the camera failure.
+      }
+      return;
+    }
+    final stopping = _scanner.stop();
+    _cameraStopInFlight = stopping;
+    try {
+      await stopping;
+    } catch (_) {
+      if (mounted) {
+        setState(() => _cameraError =
+            'Camera stopped. Try again or enter the barcode below.');
+      }
+    } finally {
+      _cameraStopInFlight = null;
+    }
+  }
+
+  Widget _cameraFailure(MobileScannerException? error) {
+    final denied = error?.errorCode == MobileScannerErrorCode.permissionDenied;
+    return Padding(
+      padding: const EdgeInsets.all(NovaSpacing.lg),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.no_photography_outlined),
+          const SizedBox(height: NovaSpacing.md),
+          Text(
+              _cameraError ??
+                  (denied
+                      ? 'Allow Camera for NutriNova AI in device Settings, then try again. You can enter a barcode below without a camera.'
+                      : 'Camera unavailable. Try again or enter the barcode below.'),
+              textAlign: TextAlign.center),
+          const SizedBox(height: NovaSpacing.md),
+          NovaButton.secondary(
+              label: 'Try camera again',
+              icon: Icons.refresh,
+              onPressed: _startCamera),
+        ],
+      ),
+    );
   }
 
   @override
@@ -53,16 +159,11 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               height: 280,
-              child: MobileScanner(
-                onDetect: (capture) {
-                  final code = capture.barcodes.isEmpty
-                      ? null
-                      : capture.barcodes.first.rawValue;
-                  if (code != null && code != _barcode && !_loading) {
-                    _lookup(code);
-                  }
-                },
-              ),
+              child: _cameraError != null
+                  ? _cameraFailure(null)
+                  : MobileScanner(
+                      controller: _scanner,
+                      errorBuilder: (_, error, __) => _cameraFailure(error)),
             ),
           ),
           const SizedBox(height: NovaSpacing.lg),
@@ -82,8 +183,9 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               const SizedBox(width: NovaSpacing.md),
               IconButton.filled(
                 tooltip: 'Lookup barcode',
-                onPressed:
-                    _loading ? null : () => _lookup(_manualBarcode.text.trim()),
+                onPressed: _loading || _savingFoodId != null
+                    ? null
+                    : () => _lookup(_manualBarcode.text.trim()),
                 icon: const Icon(Icons.search),
               ),
             ],
@@ -100,7 +202,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               ])
                 ActionChip(
                   label: Text(sample),
-                  onPressed: _loading
+                  onPressed: _loading || _savingFoodId != null
                       ? null
                       : () {
                           _manualBarcode.text = sample;
@@ -181,10 +283,8 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                 food: food,
                 grams: grams,
                 saving: _savingFoodId == food.id,
-                onOpen: () => context.push(
-                  _withMealType('/foods/${food.id}', _mealType),
-                ),
-                onLog: !grams.isFinite || grams <= 0
+                onOpen: () => _openFood(food),
+                onLog: !grams.isFinite || grams <= 0 || _savingFoodId != null
                     ? null
                     : () => _logFood(food: food, grams: grams),
               ),
@@ -197,27 +297,54 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   }
 
   Future<void> _createFromBarcode() async {
-    final food = await context.push<FoodDetail>(
-      Uri(
-        path: '/foods/custom',
-        queryParameters: {
-          'barcode': _barcode ?? '',
-          'meal_type': _mealType,
-          'return_to': 'barcode',
-        },
-      ).toString(),
-    );
-    if (!mounted || food == null) return;
-    await context.push(
-      Uri(
-        path: '/foods/${food.id}',
-        queryParameters: {'meal_type': _mealType},
-      ).toString(),
-    );
+    if (!_cameraVisible || _savingFoodId != null) return;
+    _cameraVisible = false;
+    await _stopCamera();
+    if (!mounted) return;
+    try {
+      final food = await context.push<FoodDetail>(
+        Uri(
+          path: '/foods/custom',
+          queryParameters: {
+            'barcode': _barcode ?? '',
+            'meal_type': _mealType,
+            'return_to': 'barcode',
+          },
+        ).toString(),
+      );
+      if (!mounted || food == null) return;
+      await context.push(
+        Uri(
+          path: '/foods/${food.id}',
+          queryParameters: {'meal_type': _mealType},
+        ).toString(),
+      );
+    } finally {
+      if (mounted) {
+        _cameraVisible = true;
+        await _startCamera();
+      }
+    }
+  }
+
+  Future<void> _openFood(FoodSummary food) async {
+    if (!_cameraVisible || _savingFoodId != null) return;
+    _cameraVisible = false;
+    await _stopCamera();
+    if (!mounted) return;
+    try {
+      await context.push(_withMealType('/foods/${food.id}', _mealType));
+    } finally {
+      if (mounted) {
+        _cameraVisible = true;
+        await _startCamera();
+      }
+    }
   }
 
   Future<void> _lookup(String barcode) async {
-    if (barcode.isEmpty) return;
+    barcode = barcode.trim();
+    if (barcode.isEmpty || _loading || _savingFoodId != null) return;
     setState(() {
       _barcode = barcode;
       _manualBarcode.text = barcode;
@@ -246,6 +373,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     required FoodSummary food,
     required double grams,
   }) async {
+    if (_savingFoodId != null || !grams.isFinite || grams <= 0) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _savingFoodId = food.id);
     try {
@@ -297,7 +425,7 @@ class _BarcodeFoodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scale = grams <= 0 ? 1.0 : grams / 100;
+    final scale = !grams.isFinite || grams <= 0 ? 0.0 : grams / 100;
     return NovaCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

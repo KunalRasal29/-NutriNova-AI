@@ -167,6 +167,7 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
   }
 
   Future<void> _confirmMeal(PhotoReview review) async {
+    if (_saving) return;
     setState(() => _saving = true);
     try {
       await ref
@@ -1587,6 +1588,7 @@ class _ManualPhotoFoodSheetState extends ConsumerState<_ManualPhotoFoodSheet> {
   }
 
   Future<void> _saveManualFood() async {
+    if (_saving) return;
     final food = _selectedFood;
     if (food == null) return;
     setState(() => _saving = true);

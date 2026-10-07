@@ -61,8 +61,15 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
 
   Widget _buildFood(FoodDetail food) {
     _hydrateDefaults(food);
-    final quantity = double.tryParse(_quantity.text) ?? 1;
-    final totalGrams = double.tryParse(_grams.text);
+    final parsedQuantity = double.tryParse(_quantity.text.trim());
+    final parsedGrams = double.tryParse(_grams.text.trim());
+    final validQuantity =
+        parsedQuantity != null && parsedQuantity.isFinite && parsedQuantity > 0;
+    final validGrams = _grams.text.trim().isEmpty ||
+        (parsedGrams != null && parsedGrams.isFinite && parsedGrams > 0);
+    final validAmount = validQuantity && validGrams;
+    final quantity = validAmount ? parsedQuantity : 0.0;
+    final totalGrams = validAmount ? parsedGrams : null;
     final servingChoices = _servingChoicesFor(food);
     final selectedChoice = _choiceForUnit(servingChoices, _unit);
     final preview = food.previewFor(
@@ -168,7 +175,8 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
                   Expanded(
                     child: TextField(
                       controller: _quantity,
-                      keyboardType: TextInputType.number,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Quantity',
                         prefixIcon: Icon(Icons.numbers_outlined),
@@ -179,13 +187,15 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
                   const SizedBox(width: NovaSpacing.md),
                   Expanded(
                     child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _unit,
                       decoration: const InputDecoration(labelText: 'Unit'),
                       items: [
                         for (final choice in servingChoices)
                           DropdownMenuItem(
                             value: choice.unit,
-                            child: Text(choice.label),
+                            child: Text(choice.label,
+                                overflow: TextOverflow.ellipsis),
                           ),
                       ],
                       onChanged: (value) => _changeUnit(value, food),
@@ -198,7 +208,8 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
               const SizedBox(height: NovaSpacing.md),
               TextField(
                 controller: _grams,
-                keyboardType: TextInputType.number,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(
                   labelText: 'Exact total grams',
                   helperText: 'Optional. Use this when you weighed the food.',
@@ -221,12 +232,19 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
           _ServingList(servings: food.servings),
         ],
         const SizedBox(height: NovaSpacing.lg),
+        if (!validAmount) ...[
+          const ErrorBanner(
+              message:
+                  'Enter a positive quantity and valid grams, or leave exact grams blank.'),
+          const SizedBox(height: NovaSpacing.md),
+        ],
         NovaButton.primary(
           label: _saving ? 'Saving...' : 'Add to ${_mealLabel(_mealType)}',
           icon: Icons.check,
-          onPressed: _saving
+          onPressed: _saving || !validAmount
               ? null
               : () async {
+                  if (_saving) return;
                   final messenger = ScaffoldMessenger.of(context);
                   final router = GoRouter.of(context);
                   setState(() => _saving = true);

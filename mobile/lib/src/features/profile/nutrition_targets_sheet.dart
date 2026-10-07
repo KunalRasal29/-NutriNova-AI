@@ -260,6 +260,7 @@ class _NutritionTargetsSheetState
   }
 
   Future<void> _saveCustomTargets() async {
+    if (_saving) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() {
       _saving = true;
@@ -278,7 +279,7 @@ class _NutritionTargetsSheetState
       if (!mounted) return;
       _hydrate(plan);
       ref.invalidate(nutritionTargetsProvider);
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       setState(() {
         _current = plan;
         _estimate = null;
@@ -297,6 +298,7 @@ class _NutritionTargetsSheetState
   }
 
   Future<void> _previewEstimate() async {
+    if (_saving) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -320,6 +322,7 @@ class _NutritionTargetsSheetState
   }
 
   Future<void> _applyEstimate() async {
+    if (_saving) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -339,7 +342,7 @@ class _NutritionTargetsSheetState
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted || _saving) return;
 
     setState(() {
       _saving = true;
@@ -352,7 +355,7 @@ class _NutritionTargetsSheetState
       if (!mounted) return;
       _hydrate(plan);
       ref.invalidate(nutritionTargetsProvider);
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       setState(() {
         _current = plan;
         _estimate = null;
@@ -403,7 +406,7 @@ class _TargetField extends StatelessWidget {
       decoration: InputDecoration(labelText: label, suffixText: suffix),
       validator: (value) {
         final parsed = double.tryParse(value?.trim() ?? '');
-        if (parsed == null) return 'Enter a number';
+        if (parsed == null || !parsed.isFinite) return 'Enter a number';
         if (parsed < minimum || parsed > maximum) return 'Check value';
         return null;
       },

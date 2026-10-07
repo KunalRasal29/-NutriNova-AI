@@ -1,5 +1,31 @@
 # Local Feature Stabilization
 
+## Native Reliability Follow-Up (2026-10-07)
+
+Prompt 2 continues from stabilization commit `79497436101e7e40d2b602356c4e8613071a73c8`.
+See [real_phone_qa.md](real_phone_qa.md) for platform-specific Passed, Failed/Blocked,
+and Not Tested evidence, the flow matrix, toolchain blockers, and next phone checks.
+
+This pass fixes current-LAN access (ignored local `.env` only), adds the iOS
+Local Network description, camera/gallery denial recovery, Android picker recovery,
+barcode lifecycle/retry ordering, bounded upload sends, duplicate-save guards,
+invalid-portion validation, and phone-width dashboard/serving-picker overflows.
+Checklist, weight and target summary refreshes are tightened. Native hardware
+accuracy and app smoothness are not claimed from automation.
+
+The follow-up suite has 58 Flutter tests and 121 backend tests passing. A standard
+web release build passes without opening the browser. Both native build attempts
+are blocked: Android SDK is absent; full Xcode/CocoaPods are unavailable and the
+iOS build exits before compilation. No new APK/iOS app was produced. No phone or
+emulator was connected. No paid provider calls or new feature locks were added.
+
+The Mac's current IP is `192.168.0.121`; Mac-side LAN health and existing photo
+storage both returned HTTP 200. Recheck on a real phone and after Wi-Fi changes.
+The previous staged private backup files retain their staging state and are
+excluded from this scoped checkpoint.
+
+The earlier checkpoint evidence below is retained as history, not new phone QA.
+
 Checked on 2026-10-06 in `/Users/kunalrasal/Documents/LaPulgaFit`.
 Source baseline: `2ac7f9f9875860eb6db876c63120b8c4a6dcf1ab` on `main`.
 This report accompanies the scoped stabilization checkpoint on `main`.

@@ -10,12 +10,31 @@ Install Flutter stable from the official Flutter docs, then verify:
 flutter doctor
 ```
 
-If `ios/` or `android/` folders are missing, generate platform shells once:
+Both native platform folders already exist. Do not regenerate the project to
+work around a missing SDK. As checked on 2026-10-07, this Mac has Flutter 3.44.3
+and Dart 3.12.2, but no Android SDK, full Xcode, or CocoaPods. Only macOS and
+Chrome appear in `flutter devices`; no phone or emulator was found.
+
+For Android, install the Android SDK and platform tools using Android Studio's
+SDK Manager, then run `flutter doctor --android-licenses`. Enable USB debugging
+on the phone and accept its computer authorization prompt.
+
+For iOS, install full Xcode, complete its initial setup and simulator support,
+select it as the active developer directory, and install CocoaPods for plugins
+that require it. Once Xcode exists at the standard path:
 
 ```bash
-cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter create . --platforms=ios,android
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -runFirstLaunch
+flutter doctor -v
+flutter devices
 ```
+
+These setup commands were not run here because full Xcode is not installed.
+For an iPhone, trust this Mac, enable Developer Mode if requested, and select
+your personal development team/signing in the existing Runner project when
+Xcode requests it. Native builds remain blocked until the toolchains are ready.
+See [Flutter's iOS setup](https://docs.flutter.dev/platform-integration/ios).
 
 ## 2. Install Packages
 
@@ -101,6 +120,39 @@ On physical phones, test `http://YOUR_MAC_LAN_IP:8000/api/health/` first.
 If you change the backend `.env` settings, use `docker compose up -d --force-recreate
 backend celery_worker celery_beat`; a container restart does not reload its environment.
 
+On 2026-10-07 the current LAN IP is `192.168.0.121`. The local `.env` includes
+it in `DJANGO_ALLOWED_HOSTS`. For that network, after SDK setup and connection:
+
+```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter pub get
+flutter run -d YOUR_PHONE_ID \
+  --dart-define=API_BASE_URL=http://192.168.0.121:8000 \
+  --dart-define=MOCK_MODE=false
+```
+
+Do not reuse this IP after switching Wi-Fi without checking `ipconfig getifaddr en0`.
+The Mac's LAN health and existing storage photo were reachable, but phone-side
+Wi-Fi/firewall reachability has not been tested. The API binds to `0.0.0.0:8000`;
+MinIO binds to `0.0.0.0:9000`. Both ports must be reachable from the phone.
+
+### Build Without Opening The App
+
+After installing the required native toolchains:
+
+```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter build apk --debug --dart-define=API_BASE_URL=http://192.168.0.121:8000 --dart-define=MOCK_MODE=false
+flutter build ios --simulator --debug --dart-define=API_BASE_URL=http://localhost:8000 --dart-define=MOCK_MODE=false
+```
+
+Expected Android output after a successful build: `build/app/outputs/flutter-apk/app-debug.apk`.
+Expected iOS simulator output after a successful build: `build/ios/iphonesimulator/Runner.app`.
+Neither was generated in this QA pass. Android stopped with `No Android SDK found`;
+iOS stopped with `Application not configured for iOS`. The native iOS sources
+exist, but `xcode-select -p` selects CommandLineTools and `xcrun xcodebuild -version`
+fails. Diagnose the iOS build again after installing full Xcode/CocoaPods.
+
 Default API URLs are `localhost:8000` for iOS/web and `10.0.2.2:8000` for native
 Android. Override `API_BASE_URL` for every physical-phone build. `MOCK_MODE=true`
 is a non-persistent demo, not a way to test saved user data. A backend mock photo
@@ -130,11 +182,27 @@ For a physical phone, keep the phone and Mac on the same Wi-Fi, start Docker on 
 
 The app uses camera/gallery for meal photos and camera access for barcode scan. If the app cannot open camera/gallery:
 
-- iOS: Simulator or device Settings -> Privacy & Security -> Camera/Photos -> allow NutriNova AI.
-- Android: Settings -> Apps -> NutriNova AI -> Permissions -> allow Camera and Photos.
+- iOS: enable Local Network, Camera, and Photos for NutriNova AI in Settings
+  when those permissions are requested. The app includes a local-network purpose
+  description. If Local Network was denied, enable it before retrying API access.
+- Android: Settings -> Apps -> NutriNova AI -> Permissions -> allow Camera.
+  The system gallery picker can grant access only to selected images without a
+  full-library permission. Do not expect a storage prompt on every Android version.
 - Barcode scan needs Camera permission.
 - Meal photo scan can use Camera or Gallery. Gallery is the fastest real-phone smoke test.
-- If platform folders were regenerated, confirm `image_picker` and `mobile_scanner` permissions are present in the generated iOS/Android project files.
+- Permission denial keeps manual barcode entry or Gallery available and shows
+  a retry/recovery message. Barcode retries camera setup after permission changes.
+- Barcode camera stops while backgrounded or while opening food details and
+  restarts on return. Hardware behavior still needs phone verification.
+- On Android, reopening a scan screen retrieves an image left by an interrupted
+  native picker. Review it and upload explicitly; no meal is saved automatically.
+- Microphone/voice logging and saving images back into the gallery are not
+  implemented. No microphone prompt is expected; text add is the available flow.
+- Android automatic app backup is disabled to avoid restoring secure-storage
+  ciphertext without the matching device encryption keys. Meals remain on the backend.
+
+Apple describes local-network permission recovery in
+[its support guide](https://support.apple.com/en-us/102229).
 
 ### Common macOS Phone Testing Issues
 
@@ -160,6 +228,12 @@ Run this on the phone before demo:
 10. Add a checklist item, tick it, and confirm Dashboard/Progress refresh.
 11. Open Progress and Settings.
 12. Logout and login again.
+
+Also test favorite/unfavorite, custom food creation and immediate logging,
+water, exercise, weight, returning after backgrounding, permission denial,
+temporary Wi-Fi loss, rapid double taps, and forms with the keyboard open.
+Current scan settings produce demo samples, not real image recognition.
+Record results separately for each phone in [../docs/real_phone_qa.md](../docs/real_phone_qa.md).
 
 ## Connected Core Flows
 

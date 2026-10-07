@@ -113,6 +113,46 @@ ApiClient clientFor(RoutingAdapter adapter, MemoryTokenStore store) =>
     );
 
 void main() {
+  test('temporary read network failure retries without clearing the session',
+      () async {
+    var calls = 0;
+    final adapter = RoutingAdapter((request) async {
+      calls++;
+      if (calls == 1) {
+        throw DioException(
+            requestOptions: request, type: DioExceptionType.connectionError);
+      }
+      return jsonResponse(200, {'status': 'ok'});
+    });
+    final store = MemoryTokenStore()
+      ..tokens = const AuthTokens(access: 'access', refresh: 'refresh');
+    final response = await clientFor(adapter, store).get('/api/me/');
+    expect(response.statusCode, 200);
+    expect(calls, 2);
+    expect(store.tokens?.refresh, 'refresh');
+  });
+
+  test('native uploads have bounded send time and do not replay failed writes',
+      () async {
+    final client = ApiClient(
+      config: const AppConfig(apiBaseUrl: 'https://api.test', mockMode: false),
+      tokenStore: MemoryTokenStore(),
+    );
+    expect(client.dio.options.sendTimeout, const Duration(seconds: 20));
+    final adapter = RoutingAdapter((options) async {
+      throw DioException(
+          requestOptions: options, type: DioExceptionType.sendTimeout);
+    });
+    client.dio.httpClientAdapter = adapter;
+    await expectLater(
+      client.uploadBytes('/api/photos/upload/',
+          fieldName: 'image', fileName: 'meal.png', bytes: [1, 2, 3]),
+      throwsA(isA<ApiException>().having(
+          (error) => error.isConnectionError, 'connection error', isTrue)),
+    );
+    expect(adapter.requests, hasLength(1));
+  });
+
   test('api client sends bearer token and parses mocked response', () async {
     final adapter = MockAdapter();
     final dio = Dio()..httpClientAdapter = adapter;

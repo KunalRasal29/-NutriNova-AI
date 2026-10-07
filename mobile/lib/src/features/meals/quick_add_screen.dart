@@ -223,6 +223,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
               onPressed: _saving || !canConfirm
                   ? null
                   : () async {
+                      if (_saving) return;
                       setState(() => _saving = true);
                       try {
                         await ref

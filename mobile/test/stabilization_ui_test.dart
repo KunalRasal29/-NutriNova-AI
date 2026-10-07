@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nutrinova_ai/src/core/models/app_models.dart';
+import 'package:nutrinova_ai/src/core/api/api_client.dart';
+import 'package:nutrinova_ai/src/core/repositories/auth_repository.dart';
 import 'package:nutrinova_ai/src/core/repositories/nutrition_repository.dart';
 import 'package:nutrinova_ai/src/core/repositories/providers.dart';
 import 'package:nutrinova_ai/src/core/theme/nova_theme.dart';
 import 'package:nutrinova_ai/src/features/habits/habit_grid_screen.dart';
+import 'package:nutrinova_ai/src/features/dashboard/home_dashboard_screen.dart';
 import 'package:nutrinova_ai/src/features/meals/meal_log_screen.dart';
 import 'package:nutrinova_ai/src/features/photos/photo_review_screen.dart';
 import 'package:nutrinova_ai/src/features/foods/food_search_screen.dart';
@@ -34,6 +39,11 @@ class StatefulTestRepository extends MockNutritionRepository {
   final habits = <Map<String, dynamic>>[];
   int dashboardCalls = 0;
   int photoCalls = 0;
+  int manualSaves = 0;
+  int favoriteSaves = 0;
+  int habitChecks = 0;
+  bool habitFails = false;
+  Completer<void>? saveGate;
   Map<String, dynamic>? loggedFood;
   Map<String, dynamic>? quickConfirmation;
 
@@ -55,12 +65,21 @@ class StatefulTestRepository extends MockNutritionRepository {
       required String unit,
       required String mealType,
       double? totalGrams}) async {
+    manualSaves++;
     loggedFood = {
       'id': foodId,
       'quantity': quantity,
       'unit': unit,
       'meal': mealType
     };
+    await saveGate?.future;
+  }
+
+  @override
+  Future<void> setFoodFavorite(
+      {required String foodId, required bool isFavorite}) async {
+    favoriteSaves++;
+    await saveGate?.future;
   }
 
   @override
@@ -71,7 +90,22 @@ class StatefulTestRepository extends MockNutritionRepository {
   @override
   Future<DashboardSnapshot> dashboard() async {
     dashboardCalls += 1;
-    return snapshot;
+    return DashboardSnapshot(
+      consumedCalories: snapshot.consumedCalories,
+      targetCalories: snapshot.targetCalories,
+      proteinG: snapshot.proteinG,
+      carbsG: snapshot.carbsG,
+      fatG: snapshot.fatG,
+      waterCompleted: 0,
+      waterTarget: 8,
+      meals: [],
+      habits: await todayHabits(),
+      weightTrend: [],
+      latestWeightKg: null,
+      weightChangeKg: null,
+      insight: '',
+      exerciseCalories: 250,
+    );
   }
 
   @override
@@ -113,6 +147,11 @@ class StatefulTestRepository extends MockNutritionRepository {
   @override
   Future<void> checkHabit(String habitId, int completedCount,
       {bool isCompleted = true}) async {
+    habitChecks++;
+    await saveGate?.future;
+    if (habitFails) {
+      throw const ApiException('Connection lost', isConnectionError: true);
+    }
     final habit = habits.singleWhere((item) => item['habit_id'] == habitId);
     habit['completed_count'] = completedCount;
     habit['is_completed'] = isCompleted;
@@ -158,7 +197,10 @@ Future<void> showScreen(WidgetTester tester, Widget screen,
   );
   addTearDown(router.dispose);
   await tester.pumpWidget(ProviderScope(
-    overrides: [nutritionRepositoryProvider.overrideWithValue(repository)],
+    overrides: [
+      nutritionRepositoryProvider.overrideWithValue(repository),
+      authRepositoryProvider.overrideWithValue(MockAuthRepository()),
+    ],
     child: MaterialApp.router(
       theme: NovaTheme.dark(),
       routerConfig: router,
@@ -168,6 +210,71 @@ Future<void> showScreen(WidgetTester tester, Widget screen,
 }
 
 void main() {
+  testWidgets(
+      'dashboard checklist failure stays recoverable without duplicate writes',
+      (tester) async {
+    final repository = StatefulTestRepository()
+      ..habitFails = true
+      ..saveGate = Completer<void>();
+    repository.habits.add({
+      'habit_id': 'reading',
+      'title': 'Read before bed',
+      'target_count': 1,
+      'unit': 'checkbox',
+      'completed_count': 0,
+      'is_completed': false
+    });
+    await showScreen(tester, const HomeDashboardScreen(), repository);
+    final checkbox = find.byType(CheckboxListTile);
+    await tester.scrollUntilVisible(checkbox, 300,
+        scrollable: find.byType(Scrollable).first);
+    final callback = tester.widget<CheckboxListTile>(checkbox).onChanged!;
+    callback(true);
+    callback(true);
+    await tester.pump();
+    expect(repository.habitChecks, 1);
+    repository.saveGate!.complete();
+    await tester.pumpAndSettle();
+    expect(repository.habits.single['is_completed'], isFalse);
+    expect(tester.widget<CheckboxListTile>(checkbox).onChanged, isNotNull);
+    expect(tester.takeException(), isNull);
+    repository.habitFails = false;
+    tester.widget<CheckboxListTile>(checkbox).onChanged!(true);
+    await tester.pumpAndSettle();
+    expect(repository.habits.single['is_completed'], isTrue);
+    expect(repository.dashboardCalls, greaterThan(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('one-tap add and favorite ignore rapid repeated callbacks',
+      (tester) async {
+    final repository = StatefulTestRepository()..saveGate = Completer<void>();
+    await showScreen(
+        tester, const FoodSearchScreen(initialMealType: 'dinner'), repository);
+    await tester.enterText(find.byType(TextField).first, 'egg');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    final add = find.widgetWithText(FilledButton, 'Add').first;
+    await Scrollable.ensureVisible(tester.element(add), alignment: 0.3);
+    await tester.pumpAndSettle();
+    final callback = tester.widget<FilledButton>(add).onPressed!;
+    callback();
+    callback();
+    final favorite = find
+        .byWidgetPredicate((widget) =>
+            widget is IconButton && widget.tooltip == 'Add favorite')
+        .first;
+    final favoriteCallback = tester.widget<IconButton>(favorite).onPressed!;
+    favoriteCallback();
+    favoriteCallback();
+    await tester.pump();
+    expect(repository.manualSaves, 1);
+    expect(repository.favoriteSaves, 1);
+    repository.saveGate!.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('custom checklist can be created, checked and unchecked on phone',
       (tester) async {
     final repository = StatefulTestRepository();

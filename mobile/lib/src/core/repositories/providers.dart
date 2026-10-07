@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../config/app_config.dart';
 import '../api/api_client.dart';
@@ -8,6 +9,7 @@ import 'nutrition_repository.dart';
 
 final sessionUserIdProvider = StateProvider<String?>((ref) => null);
 final sessionExpiryProvider = StateProvider<int>((ref) => 0);
+final photoPickerProvider = Provider<ImagePicker>((ref) => ImagePicker());
 
 final appConfigProvider = Provider<AppConfig>((ref) {
   return AppConfig.fromEnvironment();

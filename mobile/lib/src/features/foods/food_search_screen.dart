@@ -1388,6 +1388,7 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
   }
 
   Future<void> _oneTapAdd() async {
+    if (_adding) return;
     final messenger = ScaffoldMessenger.of(context);
     final food = widget.food;
     final hasServing = food.defaultServingGrams > 0;
@@ -1430,6 +1431,7 @@ class _FoodResultTileState extends ConsumerState<_FoodResultTile> {
   }
 
   Future<void> _toggleFavorite() async {
+    if (_savingFavorite) return;
     final messenger = ScaffoldMessenger.of(context);
     final food = widget.food;
     final nextFavorite = !food.isFavorite;

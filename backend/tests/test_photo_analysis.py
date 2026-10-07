@@ -1,12 +1,13 @@
 from decimal import Decimal
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from django.test import override_settings
+from django.test import RequestFactory, override_settings
 from django.urls import reverse
 from PIL import Image
 from rest_framework.test import APIClient
@@ -17,8 +18,26 @@ from nutrition.models import Nutrient, NutritionDataSource
 from photos.models import NutritionLabelScan, PhotoAnalysis, PhotoDetectedFood
 from photos.providers import PhotoAnalysisProviderError, get_photo_analysis_provider
 from photos.services import analyze_photo_analysis
+from photos.url_utils import public_image_url
 
 User = get_user_model()
+
+
+@pytest.mark.parametrize("host", ["localhost", "10.0.2.2", "192.168.0.121"])
+def test_local_photo_url_uses_the_request_host_for_phone_access(host):
+    with override_settings(ALLOWED_HOSTS=[host]):
+        request = RequestFactory().get("/api/photos/", HTTP_HOST=f"{host}:8000")
+        image = SimpleNamespace(url="http://minio:9000/nutrinova-local/meal.jpg")
+        assert public_image_url(image, request) == (
+            f"http://{host}:9000/nutrinova-local/meal.jpg"
+        )
+        assert public_image_url(None, request) == ""
+
+
+def test_public_photo_urls_are_not_replaced_with_local_storage_hosts():
+    request = RequestFactory().get("/api/photos/")
+    image = SimpleNamespace(url="https://images.example.com/meal.jpg")
+    assert public_image_url(image, request) == image.url
 
 LOCAL_FILE_STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},

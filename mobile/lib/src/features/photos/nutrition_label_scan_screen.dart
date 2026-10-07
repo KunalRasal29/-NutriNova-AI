@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/models/app_models.dart';
+import '../../core/photo_picker.dart';
 import '../../core/repositories/providers.dart';
 import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
@@ -25,6 +26,7 @@ class _NutritionLabelScanScreenState
   XFile? _image;
   NutritionLabelReview? _review;
   bool _busy = false;
+  bool _picking = false;
   String _error = '';
   Timer? _pollTimer;
   final _product = TextEditingController();
@@ -40,6 +42,28 @@ class _NutritionLabelScanScreenState
   final _fiber = TextEditingController();
   final _sugar = TextEditingController();
   final _sodium = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _restorePhoto();
+  }
+
+  Future<void> _restorePhoto() async {
+    _picking = true;
+    try {
+      final photo =
+          await recoverInterruptedPhoto(ref.read(photoPickerProvider));
+      if (mounted && photo != null) setState(() => _image = photo);
+    } catch (error) {
+      if (mounted) {
+        setState(
+            () => _error = photoPickerErrorMessage(error, ImageSource.gallery));
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -147,7 +171,9 @@ class _NutritionLabelScanScreenState
                 child: NovaButton.primary(
                   label: 'Camera',
                   icon: Icons.photo_camera_outlined,
-                  onPressed: _busy ? null : () => _pick(ImageSource.camera),
+                  onPressed: _busy || _picking
+                      ? null
+                      : () => _pick(ImageSource.camera),
                 ),
               ),
               const SizedBox(width: NovaSpacing.md),
@@ -155,7 +181,9 @@ class _NutritionLabelScanScreenState
                 child: NovaButton.secondary(
                   label: 'Gallery',
                   icon: Icons.photo_library_outlined,
-                  onPressed: _busy ? null : () => _pick(ImageSource.gallery),
+                  onPressed: _busy || _picking
+                      ? null
+                      : () => _pick(ImageSource.gallery),
                 ),
               ),
             ],
@@ -164,7 +192,7 @@ class _NutritionLabelScanScreenState
           NovaButton.primary(
             label: _busy ? 'Reading label...' : 'Read label',
             icon: Icons.document_scanner_outlined,
-            onPressed: _image == null || _busy ? null : _analyze,
+            onPressed: _image == null || _busy || _picking ? null : _analyze,
           ),
         ],
       ),
@@ -300,13 +328,16 @@ class _NutritionLabelScanScreenState
   }
 
   Future<void> _pick(ImageSource source) async {
+    if (_busy || _picking) return;
+    setState(() => _picking = true);
     try {
-      final image = await ImagePicker().pickImage(
-        source: source,
-        imageQuality: 78,
-        maxWidth: 1600,
-        maxHeight: 1600,
-      );
+      final image = await ref.read(photoPickerProvider).pickImage(
+            source: source,
+            imageQuality: 78,
+            maxWidth: 1600,
+            maxHeight: 1600,
+            requestFullMetadata: false,
+          );
       if (image != null && mounted) {
         _pollTimer?.cancel();
         setState(() {
@@ -315,14 +346,17 @@ class _NutritionLabelScanScreenState
           _error = '';
         });
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        setState(() => _error = 'Allow camera/photos access or use Gallery.');
+        setState(() => _error = photoPickerErrorMessage(error, source));
       }
+    } finally {
+      if (mounted) setState(() => _picking = false);
     }
   }
 
   Future<void> _analyze() async {
+    if (_busy || _picking) return;
     final image = _image;
     if (image == null) return;
     setState(() {
@@ -393,6 +427,7 @@ class _NutritionLabelScanScreenState
   }
 
   Future<void> _confirm() async {
+    if (_busy) return;
     final review = _review;
     if (review == null || review.isProcessing || review.isFailed) return;
     if (_product.text.trim().isEmpty) {

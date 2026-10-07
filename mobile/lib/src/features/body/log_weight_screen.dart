@@ -67,7 +67,7 @@ class _LogWeightScreenState extends ConsumerState<LogWeightScreen> {
                     ),
                     validator: (value) {
                       final parsed = double.tryParse(value?.trim() ?? '');
-                      if (parsed == null) {
+                      if (parsed == null || !parsed.isFinite) {
                         return 'Enter your weight in kilograms.';
                       }
                       if (parsed < 25 || parsed > 350) {
@@ -92,6 +92,7 @@ class _LogWeightScreenState extends ConsumerState<LogWeightScreen> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final value = double.tryParse(_weight.text.trim());
@@ -102,8 +103,7 @@ class _LogWeightScreenState extends ConsumerState<LogWeightScreen> {
       await ref.read(nutritionRepositoryProvider).logBodyMetric(
             weightKg: value,
           );
-      ref.invalidate(dashboardProvider);
-      ref.invalidate(progressReportProvider);
+      refreshNutritionSummaries(ref);
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(content: Text('${value.toStringAsFixed(1)} kg saved')),

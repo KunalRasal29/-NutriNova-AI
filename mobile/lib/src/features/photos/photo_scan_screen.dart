@@ -1,11 +1,11 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/repositories/providers.dart';
+import '../../core/photo_picker.dart';
 import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
 
@@ -21,8 +21,31 @@ class PhotoScanScreen extends ConsumerStatefulWidget {
 class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
   XFile? _image;
   bool _uploading = false;
+  bool _picking = false;
   String _progressLabel = '';
   String _errorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _restorePhoto();
+  }
+
+  Future<void> _restorePhoto() async {
+    _picking = true;
+    try {
+      final photo =
+          await recoverInterruptedPhoto(ref.read(photoPickerProvider));
+      if (mounted && photo != null) setState(() => _image = photo);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _errorMessage =
+            photoPickerErrorMessage(error, ImageSource.gallery));
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +84,9 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
                       child: NovaButton.primary(
                         label: 'Camera',
                         icon: Icons.photo_camera_outlined,
-                        onPressed: () => _pick(ImageSource.camera),
+                        onPressed: _uploading || _picking
+                            ? null
+                            : () => _pick(ImageSource.camera),
                       ),
                     ),
                     const SizedBox(width: NovaSpacing.md),
@@ -69,17 +94,21 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
                       child: NovaButton.secondary(
                         label: 'Gallery',
                         icon: Icons.photo_library_outlined,
-                        onPressed: () => _pick(ImageSource.gallery),
+                        onPressed: _uploading || _picking
+                            ? null
+                            : () => _pick(ImageSource.gallery),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: NovaSpacing.sm),
-                const Text(
-                  'On web preview, camera access depends on browser permission. Gallery is the most reliable test path.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: NovaColors.graphite),
-                ),
+                if (kIsWeb) ...[
+                  const SizedBox(height: NovaSpacing.sm),
+                  const Text(
+                    'On web preview, camera access depends on browser permission. Gallery is the most reliable test path.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: NovaColors.graphite),
+                  ),
+                ],
               ],
             ),
           ),
@@ -97,26 +126,23 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
           NovaButton.primary(
             label: _uploading ? 'Working...' : 'Upload and analyze',
             icon: Icons.auto_awesome,
-            onPressed: _image == null || _uploading
+            onPressed: _image == null || _uploading || _picking
                 ? null
                 : () async {
+                    if (_uploading) return;
+                    final image = _image!;
                     setState(() {
                       _uploading = true;
                       _progressLabel = 'Uploading photo';
                       _errorMessage = '';
                     });
                     try {
-                      await Future<void>.delayed(
-                        const Duration(milliseconds: 150),
-                      );
-                      if (mounted) {
-                        setState(() => _progressLabel = 'Analyzing meal');
-                      }
-                      final bytes = await _image!.readAsBytes();
+                      final bytes = await image.readAsBytes();
+                      if (!mounted) return;
                       final review = await ref
                           .read(nutritionRepositoryProvider)
                           .uploadMealPhoto(
-                            fileName: _fileNameFor(_image!),
+                            fileName: _fileNameFor(image),
                             bytes: bytes,
                           );
                       if (context.mounted) {
@@ -147,14 +173,16 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
   }
 
   Future<void> _pick(ImageSource source) async {
-    if (_uploading) return;
+    if (_uploading || _picking) return;
+    setState(() => _picking = true);
     try {
-      final picked = await ImagePicker().pickImage(
-        source: source,
-        imageQuality: 78,
-        maxWidth: 1600,
-        maxHeight: 1600,
-      );
+      final picked = await ref.read(photoPickerProvider).pickImage(
+            source: source,
+            imageQuality: 78,
+            maxWidth: 1600,
+            maxHeight: 1600,
+            requestFullMetadata: false,
+          );
       if (picked != null && mounted) {
         setState(() {
           _image = picked;
@@ -164,10 +192,10 @@ class _PhotoScanScreenState extends ConsumerState<PhotoScanScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = source == ImageSource.camera
-            ? 'Camera did not open. Allow camera permission or use Gallery.'
-            : friendlyErrorMessage(error);
+        _errorMessage = photoPickerErrorMessage(error, source);
       });
+    } finally {
+      if (mounted) setState(() => _picking = false);
     }
   }
 }
@@ -184,6 +212,9 @@ class _PickedImagePreview extends StatelessWidget {
       child: FutureBuilder<Uint8List>(
         future: image.readAsBytes(),
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Icon(Icons.broken_image_outlined));
+          }
           final bytes = snapshot.data;
           if (bytes == null) {
             return const Center(child: CircularProgressIndicator());

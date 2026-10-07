@@ -88,6 +88,12 @@ docker compose run --rm backend python manage.py migrate
 
 ## Mobile Setup
 
+The current native-readiness evidence is in [docs/real_phone_qa.md](docs/real_phone_qa.md).
+On 2026-10-07 this Mac has Flutter 3.44.3 / Dart 3.12.2, but no Android SDK,
+full Xcode, CocoaPods, connected phone, or emulator. Tests and a web build are
+not proof of native-phone operation. Follow the toolchain section in
+[mobile/README.md](mobile/README.md) before using the native run commands.
+
 ```bash
 cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
 flutter pub get
@@ -152,6 +158,28 @@ flutter run -d YOUR_PHONE_ID --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8
 Replace `YOUR_PHONE_ID` with the ID from `flutter devices` and
 `YOUR_MAC_LAN_IP` with the address reported above.
 
+This Mac's Wi-Fi address on 2026-10-07 is `192.168.0.121`. It is now allowed in
+the local `.env`; backend health and an existing MinIO photo both returned HTTP
+200 through that address. Recheck the IP after changing networks. A current-phone
+run, once the SDK and device are ready, is:
+
+```bash
+cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
+flutter pub get
+flutter run -d YOUR_PHONE_ID --dart-define=API_BASE_URL=http://192.168.0.121:8000 --dart-define=MOCK_MODE=false
+```
+
+Check from the Mac, then from the phone's browser yourself:
+
+```bash
+curl --fail http://192.168.0.121:8000/api/health/
+```
+
+Phone-side reachability remains untested. Keep ports `8000` (API) and `9000`
+(photo storage) reachable on the same Wi-Fi; guest-network isolation or a Mac
+firewall rule may block them. Photo responses use the API request's host for
+local MinIO URLs, so using the correct API host also fixes the preview host.
+
 Backend and MinIO already bind to `0.0.0.0` through Docker Compose. The phone and Mac must be on the same Wi-Fi. Native iOS/Android builds do not need CORS, but Flutter web does.
 
 API base URL quick map:
@@ -163,11 +191,18 @@ API base URL quick map:
 
 Phone permission checklist:
 
-- iPhone: allow Camera and Photos when prompted, or enable them in Settings.
-- Android: allow Camera and Photos/Images in app permissions.
+- iPhone: allow Local Network, Camera, and Photos when requested. After denial,
+  enable the relevant access for NutriNova AI in Settings and retry.
+- Android: allow Camera when requested. Gallery may use the system photo picker
+  without requesting full-library access; limited selected-photo access is enough.
+  If denied, check Settings -> Apps -> NutriNova AI -> Permissions and retry.
 - Barcode scan requires Camera.
 - Meal photo scan works with Camera or Gallery. Gallery is the fastest smoke test.
 - Real phones cannot use `localhost` for the Mac backend; use the Mac LAN IP.
+- Voice recording/logging is not implemented, so no microphone permission is
+  requested. Quick text add is available; it is not speech recognition.
+- Android interrupted-photo recovery runs when Meal scan or Nutrition label is
+  reopened; recovered photos are not uploaded or logged automatically.
 
 Without `API_BASE_URL`, native Android defaults to `http://10.0.2.2:8000`;
 iOS and web default to `http://localhost:8000`. Physical phones always need the
@@ -266,7 +301,7 @@ After setup, a new developer can verify the core app loop with these steps:
 1. Start Docker and prepare data:
 
 ```bash
-cp .env.example .env
+test -f .env || cp .env.example .env
 docker compose up -d
 make migrate
 docker compose run --rm backend python manage.py seed_core_nutrition
