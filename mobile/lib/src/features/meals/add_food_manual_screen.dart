@@ -243,7 +243,7 @@ class _AddFoodManualScreenState extends ConsumerState<AddFoodManualScreen> {
                               override: totalGrams,
                             ),
                           );
-                      ref.invalidate(dashboardProvider);
+                      refreshNutritionSummaries(ref);
                       ref.invalidate(todayMealLogsProvider);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(

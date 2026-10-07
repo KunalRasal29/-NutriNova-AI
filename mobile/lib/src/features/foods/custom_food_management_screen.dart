@@ -380,7 +380,7 @@ class _CustomFoodManagementScreenState
             food.id,
             mealType: 'snack',
           );
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       ref.invalidate(todayMealLogsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

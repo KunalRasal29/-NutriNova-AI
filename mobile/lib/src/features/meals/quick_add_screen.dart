@@ -232,8 +232,11 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                           'meal_type': _mealType,
                           'items': parsedItems,
                         });
-                        ref.invalidate(dashboardProvider);
+                        refreshNutritionSummaries(ref);
                         ref.invalidate(todayMealLogsProvider);
+                        ref.invalidate(recentFoodsProvider);
+                        ref.invalidate(frequentFoodsProvider);
+                        ref.invalidate(usualFoodsProvider(_mealType));
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(

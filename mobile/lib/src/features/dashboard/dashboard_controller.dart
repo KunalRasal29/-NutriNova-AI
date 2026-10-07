@@ -81,3 +81,9 @@ String currentMonthKey() {
   final month = now.month.toString().padLeft(2, '0');
   return '${now.year}-$month';
 }
+
+void refreshNutritionSummaries(WidgetRef ref) {
+  ref.invalidate(dashboardProvider);
+  ref.invalidate(progressReportProvider);
+  ref.invalidate(weeklyBetaReportProvider);
+}

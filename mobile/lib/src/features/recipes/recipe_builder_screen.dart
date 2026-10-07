@@ -224,7 +224,7 @@ class _RecipeBuilderScreenState extends ConsumerState<RecipeBuilderScreen> {
             recipeId: recipeId,
             mealType: _mealType,
           );
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       ref.invalidate(todayMealLogsProvider);
       if (!mounted) return;
       messenger.showSnackBar(

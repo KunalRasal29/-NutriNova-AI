@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -30,6 +32,7 @@ class PhotoReviewScreen extends ConsumerStatefulWidget {
 class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
   late String _mealType;
   bool _saving = false;
+  Timer? _pollTimer;
 
   @override
   void initState() {
@@ -38,7 +41,23 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
   }
 
   @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    ref.listen(photoReviewProvider(widget.analysisId), (_, next) {
+      final review = next.asData?.value;
+      if (review == null) return;
+      _pollTimer?.cancel();
+      if (review.isProcessing) {
+        _pollTimer = Timer(const Duration(seconds: 3), () {
+          if (mounted) ref.invalidate(photoReviewProvider(widget.analysisId));
+        });
+      }
+    });
     final reviewState = ref.watch(photoReviewProvider(widget.analysisId));
     return NovaScaffold(
       title: 'Review meal scan',
@@ -75,7 +94,7 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
           _ReviewStateCard(
             icon: Icons.hourglass_top,
             title: 'Analyzing meal',
-            message: 'Refresh in a moment if the results are not ready.',
+            message: 'Reading your photo. Results will appear when ready.',
             actionLabel: 'Refresh',
             actionIcon: Icons.refresh,
             onAction: () =>
@@ -86,7 +105,9 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
           _ReviewStateCard(
             icon: Icons.error_outline,
             title: 'Analysis failed',
-            message: 'Try another photo or add the visible foods manually.',
+            message: review.errorMessage.isEmpty
+                ? 'Try another photo or add the visible foods manually.'
+                : friendlyErrorMessage(review.errorMessage),
             danger: true,
             actionLabel: 'Add missing food',
             actionIcon: Icons.add,
@@ -151,8 +172,11 @@ class _PhotoReviewScreenState extends ConsumerState<PhotoReviewScreen> {
       await ref
           .read(nutritionRepositoryProvider)
           .confirmPhotoMeal(review.analysisId, _mealType);
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       ref.invalidate(todayMealLogsProvider);
+      ref.invalidate(recentFoodsProvider);
+      ref.invalidate(frequentFoodsProvider);
+      ref.invalidate(usualFoodsProvider(_mealType));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Saved to ${_mealLabel(_mealType)}')),

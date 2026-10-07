@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 
 import '../api/api_client.dart';
@@ -228,14 +230,28 @@ class ApiNutritionRepository implements NutritionRepository {
   @override
   Future<DashboardSnapshot> dashboard() async {
     final today = DateTime.now();
-    final summary = await _apiClient.get(
-      '/api/nutrition/daily-summary/',
-      queryParameters: {'date': _dateString(today)},
-    );
-    final habits = await todayHabits();
-    final mealLogs = await mealsForDate(today);
-    final bodyTrend = await bodyMetricTrend();
-    final tracking = await dailyTracking();
+    final (summary, habits, mealLogs, bodyTrend, tracking) = await (
+      _apiClient.get(
+        '/api/nutrition/daily-summary/',
+        queryParameters: {'date': _dateString(today)},
+      ),
+      todayHabits(),
+      mealsForDate(today),
+      bodyMetricTrend(),
+      dailyTracking(),
+    ).wait.onError<ParallelWaitError>((error, stackTrace) {
+      final errors = error.errors as (
+        AsyncError?,
+        AsyncError?,
+        AsyncError?,
+        AsyncError?,
+        AsyncError?
+      );
+      final failure = [errors.$1, errors.$2, errors.$3, errors.$4, errors.$5]
+          .whereType<AsyncError>()
+          .first;
+      Error.throwWithStackTrace(failure.error, failure.stackTrace);
+    });
     final meals = [
       for (final log in mealLogs)
         for (final item in log.items) item,
@@ -399,8 +415,8 @@ class ApiNutritionRepository implements NutritionRepository {
       final page = FoodSearchPage.fromJson(data, page: request.page);
       _foodSearchCache[key] = _FoodSearchCacheEntry(page, DateTime.now());
       return page;
-    } on ApiException {
-      if (cached != null) return cached.page;
+    } on ApiException catch (error) {
+      if (error.isConnectionError && cached != null) return cached.page;
       rethrow;
     } finally {
       if (identical(_activeFoodSearch, cancelToken)) {
@@ -442,9 +458,9 @@ class ApiNutritionRepository implements NutritionRepository {
           .toList();
       _foodListCache[path] = foods;
       return foods;
-    } on ApiException {
+    } on ApiException catch (error) {
       final cached = _foodListCache[path];
-      if (cached != null) return cached;
+      if (error.isConnectionError && cached != null) return cached;
       rethrow;
     }
   }
@@ -459,6 +475,9 @@ class ApiNutritionRepository implements NutritionRepository {
     } else {
       await _apiClient.delete('/api/foods/$foodId/favorite/');
     }
+    _foodSearchCache.clear();
+    _foodListCache.clear();
+    _foodDetailCache.remove(foodId);
   }
 
   @override
@@ -481,9 +500,9 @@ class ApiNutritionRepository implements NutritionRepository {
       final food = FoodDetail.fromJson(response.data as Map<String, dynamic>);
       _foodDetailCache[foodId] = food;
       return food;
-    } on ApiException {
+    } on ApiException catch (error) {
       final cached = _foodDetailCache[foodId];
-      if (cached != null) return cached;
+      if (error.isConnectionError && cached != null) return cached;
       rethrow;
     }
   }
@@ -744,7 +763,8 @@ class ApiNutritionRepository implements NutritionRepository {
 
   @override
   Future<List<HabitGridItem>> todayHabits() async {
-    final response = await _apiClient.get('/api/habits/today/');
+    final response = await _apiClient.get('/api/habits/today/',
+        queryParameters: {'date': _dateString(DateTime.now())});
     final data = response.data as Map<String, dynamic>;
     final items = data['items'] as List<dynamic>? ?? const [];
     return items
@@ -1008,12 +1028,17 @@ class ApiNutritionRepository implements NutritionRepository {
       data: payload,
     );
     final data = response.data as Map<String, dynamic>;
+    _foodSearchCache.clear();
+    _foodListCache.clear();
     return FoodDetail.fromJson(data['food'] as Map<String, dynamic>);
   }
 
   @override
   Future<Map<String, dynamic>> dailyTracking() async {
-    final response = await _apiClient.get('/api/tracking/today/');
+    final response = await _apiClient.get(
+      '/api/tracking/today/',
+      queryParameters: {'date': _dateString(DateTime.now())},
+    );
     return response.data as Map<String, dynamic>;
   }
 

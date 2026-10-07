@@ -2,6 +2,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nutrinova_ai/src/core/models/app_models.dart';
 
 void main() {
+  test('failed meal and label scans preserve the error and cannot look ready',
+      () {
+    final payload = {
+      'id': 'failed-scan',
+      'status': 'failed',
+      'error_message': 'Photo analysis is not configured.',
+      'disclaimer': 'Demo scan: sample results only.',
+    };
+    final meal = PhotoReview.fromJson(payload);
+    final label = NutritionLabelReview.fromJson(payload);
+    expect(meal.isFailed, isTrue);
+    expect(meal.hasConfirmableItems, isFalse);
+    expect(label.isFailed, isTrue);
+    expect(label.disclaimer, payload['disclaimer']);
+    expect(label.errorMessage, payload['error_message']);
+    expect(meal.errorMessage, payload['error_message']);
+  });
+
   test('photo review payload parses corrected quantity and totals', () {
     final review = PhotoReview.fromJson({
       'analysis_id': 'analysis-1',

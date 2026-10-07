@@ -12,6 +12,19 @@ from django.conf import settings
 PHOTO_DISCLAIMER = (
     "Photo nutrition is an estimate. Confirm food and portion size for better accuracy."
 )
+DEMO_PHOTO_DISCLAIMER = (
+    "Demo scan: these are sample results, not foods detected from your photo. "
+    "Replace the foods and portions before saving."
+)
+
+
+def analysis_disclaimer(analysis):
+    if (
+        analysis.raw_ai_response.get("is_demo")
+        or analysis.raw_ai_response.get("provider") == "local_model"
+    ):
+        return DEMO_PHOTO_DISCLAIMER
+    return PHOTO_DISCLAIMER
 
 
 class PhotoAnalysisProviderError(Exception):
@@ -37,6 +50,7 @@ class MockPhotoAnalysisProvider(BasePhotoAnalysisProvider):
         if "egg" in image_name:
             return {
                 "provider": self.provider_name,
+                "is_demo": True,
                 "detected_foods": [
                     {
                         "name": "boiled egg",
@@ -51,18 +65,20 @@ class MockPhotoAnalysisProvider(BasePhotoAnalysisProvider):
                         "portion_confidence": "0.8000",
                         "confidence": "0.8800",
                         "reasoning_short": (
-                            "Five egg-shaped items are visible on the plate."
+                            "Sample portion for testing; "
+                            "no image recognition was performed."
                         ),
                     }
                 ],
                 "confidence": "0.8800",
-                "disclaimer": PHOTO_DISCLAIMER,
+                "disclaimer": DEMO_PHOTO_DISCLAIMER,
             }
         confidence = Decimal("0.5200") if low_confidence else Decimal("0.8600")
         detected_name = "Mystery curry" if low_confidence else "Paneer"
         estimated_grams = Decimal("180.000") if low_confidence else Decimal("100.000")
         return {
             "provider": self.provider_name,
+            "is_demo": True,
             "detected_foods": [
                 {
                     "name": detected_name,
@@ -86,12 +102,13 @@ class MockPhotoAnalysisProvider(BasePhotoAnalysisProvider):
                 }
             ],
             "confidence": str(confidence),
-            "disclaimer": PHOTO_DISCLAIMER,
+            "disclaimer": DEMO_PHOTO_DISCLAIMER,
         }
 
     def analyze_nutrition_label(self, analysis):
         return {
             "provider": self.provider_name,
+            "is_demo": True,
             "product_name": "Mock Protein Bar",
             "brand": "NutriNova Sample",
             "serving_size": "1 bar (50 g)",
@@ -108,7 +125,7 @@ class MockPhotoAnalysisProvider(BasePhotoAnalysisProvider):
             "ingredients_text": "Mock oats, whey protein, peanuts.",
             "allergens": ["milk", "peanuts"],
             "confidence": "0.8400",
-            "disclaimer": PHOTO_DISCLAIMER,
+            "disclaimer": DEMO_PHOTO_DISCLAIMER,
         }
 
 
@@ -363,7 +380,16 @@ class OpenAIPhotoAnalysisProvider(BasePhotoAnalysisProvider):
 
 
 def get_photo_analysis_provider():
-    provider_name = getattr(settings, "PHOTO_ANALYSIS_PROVIDER", "mock").lower()
-    if provider_name == "openai" and getattr(settings, "OPENAI_API_KEY", ""):
+    provider_name = getattr(settings, "PHOTO_ANALYSIS_PROVIDER", "mock").strip().lower()
+    if provider_name == "mock":
+        return MockPhotoAnalysisProvider()
+    if provider_name == "openai":
+        if not getattr(settings, "OPENAI_API_KEY", "").strip():
+            raise PhotoAnalysisProviderError(
+                "Photo analysis is not configured. "
+                "Add an AI API key or use manual food logging."
+            )
         return OpenAIPhotoAnalysisProvider()
-    return MockPhotoAnalysisProvider()
+    raise PhotoAnalysisProviderError(
+        "The selected photo analysis provider is not supported."
+    )

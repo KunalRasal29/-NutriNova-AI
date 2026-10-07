@@ -1,5 +1,6 @@
 from decimal import Decimal
 from io import BytesIO
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -13,7 +14,9 @@ from rest_framework.test import APIClient
 from foods.models import Food, FoodNutrient, FoodServing
 from meals.models import MealLog, MealLogItem
 from nutrition.models import Nutrient, NutritionDataSource
-from photos.models import PhotoAnalysis, PhotoDetectedFood
+from photos.models import NutritionLabelScan, PhotoAnalysis, PhotoDetectedFood
+from photos.providers import PhotoAnalysisProviderError, get_photo_analysis_provider
+from photos.services import analyze_photo_analysis
 
 User = get_user_model()
 
@@ -23,6 +26,110 @@ LOCAL_FILE_STORAGES = {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
+
+
+@pytest.mark.django_db
+@override_settings(PHOTO_ANALYSIS_PROVIDER="mock")
+def test_analysis_failure_persists_instead_of_staying_processing(user):
+    analysis = PhotoAnalysis.objects.create(user=user, image="broken.jpg")
+    with (
+        patch(
+            "photos.providers.MockPhotoAnalysisProvider.analyze_meal_photo",
+            side_effect=RuntimeError("Could not read image"),
+        ),
+        pytest.raises(RuntimeError, match="Could not read image"),
+    ):
+        analyze_photo_analysis(analysis.id)
+    analysis.refresh_from_db()
+    assert analysis.status == PhotoAnalysis.Status.FAILED
+    assert analysis.error_message == "Could not read image"
+    assert not analysis.detected_foods.exists()
+
+
+@pytest.mark.django_db
+@override_settings(PHOTO_ANALYSIS_PROVIDER="openai", OPENAI_API_KEY="")
+def test_missing_ai_configuration_fails_without_returning_mock_results(user):
+    analysis = PhotoAnalysis.objects.create(user=user, image="meal.jpg")
+    with pytest.raises(PhotoAnalysisProviderError, match="not configured"):
+        analyze_photo_analysis(analysis.id)
+    analysis.refresh_from_db()
+    assert analysis.status == PhotoAnalysis.Status.FAILED
+    assert not analysis.detected_foods.exists()
+
+
+@override_settings(PHOTO_ANALYSIS_PROVIDER="unknown")
+def test_unknown_photo_provider_is_not_silently_replaced_with_demo():
+    with pytest.raises(PhotoAnalysisProviderError, match="not supported"):
+        get_photo_analysis_provider()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "patch_payload",
+    [
+        {"serving_size": "1 bar"},
+        {"parsed_nutrients": {"calories": "not a number"}},
+        {"parsed_nutrients": {"calories": "NaN"}},
+        {"parsed_nutrients": {"protein_g": -1}},
+        {"parsed_nutrients": {"calories": 210, "protein_g": None}},
+    ],
+)
+def test_label_confirm_rejects_unknown_weight_or_invalid_nutrients(
+    api_client, user, seeded_core, patch_payload
+):
+    analysis = PhotoAnalysis.objects.create(
+        user=user,
+        image="label.jpg",
+        analysis_type="nutrition_label",
+        status="needs_review",
+    )
+    NutritionLabelScan.objects.create(
+        photo_analysis=analysis,
+        product_name="Test bar",
+        serving_size="1 bar (50 g)",
+        parsed_nutrients={"calories": 210, "protein_g": 20, "carbs_g": 22, "fat_g": 7},
+    )
+    api_client.force_authenticate(user=user)
+    response = api_client.post(
+        reverse("photo-confirm-label-as-food", args=[analysis.id]),
+        patch_payload,
+        format="json",
+    )
+    assert response.status_code == 400, response.json()
+    assert not Food.objects.filter(created_by=user).exists()
+    analysis.refresh_from_db()
+    assert analysis.status == "needs_review"
+
+
+@pytest.mark.django_db
+def test_label_calorie_alias_is_converted_per_serving(api_client, user, seeded_core):
+    analysis = PhotoAnalysis.objects.create(
+        user=user,
+        image="label.jpg",
+        analysis_type="nutrition_label",
+        status="needs_review",
+    )
+    NutritionLabelScan.objects.create(
+        photo_analysis=analysis,
+        product_name="Test bar",
+        serving_size="1 bar (50 g)",
+    )
+    api_client.force_authenticate(user=user)
+    response = api_client.post(
+        reverse("photo-confirm-label-as-food", args=[analysis.id]),
+        {
+            "parsed_nutrients": {
+                "calories_kcal": 210,
+                "protein_g": 20,
+                "carbs_g": 22,
+                "fat_g": 7,
+            },
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.json()
+    food = Food.objects.get(id=response.json()["food"]["id"])
+    assert food.nutrients.get(nutrient__code="calories").amount_per_100g == 420
 
 
 @pytest.fixture
@@ -219,7 +326,7 @@ def test_upload_creates_photo_analysis(api_client, user, paneer_food, tmp_path):
     payload = response.json()
     assert payload["analysis_type"] == "meal_photo"
     assert payload["status"] == "needs_review"
-    assert payload["disclaimer"].startswith("Photo nutrition is an estimate")
+    assert payload["disclaimer"].startswith("Demo scan:")
     assert PhotoAnalysis.objects.filter(id=payload["id"], user=user).exists()
 
 
@@ -277,6 +384,8 @@ def test_mock_provider_produces_detected_foods(api_client, user, paneer_food, tm
     assert response.status_code == 201
     payload = response.json()
     assert payload["ai_provider"] == "local_model"
+    assert payload["raw_ai_response"]["is_demo"] is True
+    assert payload["disclaimer"].startswith("Demo scan:")
     assert payload["detected_foods"][0]["detected_name"] == "Paneer"
     assert payload["detected_foods"][0]["matched_food"] == str(paneer_food.id)
     assert Decimal(payload["confidence_score"]) == Decimal("0.8600")
@@ -422,7 +531,7 @@ def test_label_scan_creates_pending_review_payload(
     assert payload["nutrition_label_scan"]["product_name"] == "Mock Protein Bar"
     assert payload["nutrition_label_scan"]["parsed_nutrients"]["protein_g"] == "20.0000"
     assert payload["detected_foods"] == []
-    assert payload["disclaimer"].startswith("Photo nutrition is an estimate")
+    assert payload["disclaimer"].startswith("Demo scan:")
 
 
 @pytest.mark.django_db

@@ -8,6 +8,7 @@ from django.db.models import Q
 from foods.models import Food, FoodServing, UserPortionPreference
 from nutrition.calculations import calculate_food_snapshot, quantize_decimal
 from photos.models import PhotoDetectedFood
+from photos.providers import analysis_disclaimer
 from photos.url_utils import public_image_url
 
 LOW_CONFIDENCE_THRESHOLD = Decimal("0.7000")
@@ -435,10 +436,8 @@ def review_payload(analysis, request=None) -> dict:
         "analysis_id": analysis.id,
         "status": analysis.status,
         "image_url": public_image_url(analysis.image, request),
-        "disclaimer": (
-            "Photo nutrition is an estimate. Confirm food and portion size for "
-            "better accuracy."
-        ),
+        "disclaimer": analysis_disclaimer(analysis),
+        "error_message": analysis.error_message,
         "items": preview["items"],
         "total_preview": preview["total_preview"],
         "warnings": preview["warnings"],

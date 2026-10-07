@@ -24,8 +24,13 @@ class ApiAuthRepository implements AuthRepository {
   Future<UserProfile?> currentUser() async {
     final tokens = await _tokenStore.read();
     if (tokens == null) return null;
-    final response = await _apiClient.get('/api/me/');
-    return UserProfile.fromJson(response.data as Map<String, dynamic>);
+    try {
+      final response = await _apiClient.get('/api/me/');
+      return UserProfile.fromJson(response.data as Map<String, dynamic>);
+    } on ApiException catch (error) {
+      if (error.statusCode == 401) return null;
+      rethrow;
+    }
   }
 
   @override

@@ -39,7 +39,7 @@ Start the backend from the repository root:
 
 ```bash
 cd /Users/kunalrasal/Documents/LaPulgaFit
-cp .env.example .env
+test -f .env || cp .env.example .env
 docker compose build
 docker compose up -d
 docker compose ps
@@ -55,7 +55,8 @@ iOS simulator:
 
 ```bash
 cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter run -d ios \
+flutter devices
+flutter run -d YOUR_IOS_SIMULATOR_ID \
   --dart-define=API_BASE_URL=http://localhost:8000
 ```
 
@@ -63,7 +64,8 @@ Android emulator:
 
 ```bash
 cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter run -d android \
+flutter devices
+flutter run -d YOUR_ANDROID_EMULATOR_ID \
   --dart-define=API_BASE_URL=http://10.0.2.2:8000
 ```
 
@@ -80,28 +82,29 @@ If that fails on your Mac, run:
 ifconfig en0
 ```
 
-Use the `inet` IPv4 address. On Kunal's current Mac network this is:
+Use the `inet` IPv4 address. Check it again after changing networks or laptops;
+do not reuse an old hotspot address.
 
-```text
-172.20.10.3
-```
-
-Add that IP to `DJANGO_ALLOWED_HOSTS` in `.env`, restart the backend, then run:
+Add that IP to `DJANGO_ALLOWED_HOSTS` in `.env`, reload the container environment, then run:
 
 ```bash
 cd /Users/kunalrasal/Documents/LaPulgaFit
-docker compose restart backend
+docker compose up -d --force-recreate backend celery_worker celery_beat
 cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter run \
+flutter devices
+flutter run -d YOUR_PHONE_ID \
   --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
 ```
 
-Current Kunal Mac network example:
+Replace the device ID and LAN IP placeholders with the current values.
+On physical phones, test `http://YOUR_MAC_LAN_IP:8000/api/health/` first.
+If you change the backend `.env` settings, use `docker compose up -d --force-recreate
+backend celery_worker celery_beat`; a container restart does not reload its environment.
 
-```bash
-cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter run --dart-define=API_BASE_URL=http://172.20.10.3:8000
-```
+Default API URLs are `localhost:8000` for iOS/web and `10.0.2.2:8000` for native
+Android. Override `API_BASE_URL` for every physical-phone build. `MOCK_MODE=true`
+is a non-persistent demo, not a way to test saved user data. A backend mock photo
+provider also returns sample results, and is now labeled explicitly on review screens.
 
 Backend and MinIO bind to `0.0.0.0` through Docker Compose. Your real phone and Mac must be on the same Wi-Fi, and phone photo previews also need port `9000` reachable for local MinIO images. Real phones cannot use `localhost` for the Mac backend.
 
@@ -119,7 +122,6 @@ Native iOS/Android builds do not need CORS. Flutter web does.
 - iOS simulator: `http://localhost:8000`
 - Android emulator: `http://10.0.2.2:8000`
 - Physical iPhone/Android phone: `http://YOUR_MAC_LAN_IP:8000`
-- Physical phone on Kunal's current network: `http://172.20.10.3:8000`
 - Production later: your HTTPS API domain
 
 For a physical phone, keep the phone and Mac on the same Wi-Fi, start Docker on the Mac, and use `ipconfig getifaddr en0` to find the LAN IP.
@@ -137,7 +139,7 @@ The app uses camera/gallery for meal photos and camera access for barcode scan. 
 ### Common macOS Phone Testing Issues
 
 - Phone cannot reach backend: use your Mac LAN IP instead of `localhost`.
-- Backend rejects the phone request: add the LAN IP to `DJANGO_ALLOWED_HOSTS` and restart the backend.
+- Backend rejects the phone request: add the LAN IP to `DJANGO_ALLOWED_HOSTS`, then recreate the backend/worker/beat containers as shown above.
 - Photo preview image does not load: run `make ensure-local-storage` from the repo root and confirm port `9000` is reachable.
 - Camera opens black: check simulator/device camera permissions and try a physical device for barcode scanning.
 - Android emulator cannot connect: use `10.0.2.2`, not `127.0.0.1`.

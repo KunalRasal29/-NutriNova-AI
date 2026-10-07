@@ -6,6 +6,9 @@ import '../auth/token_store.dart';
 import 'auth_repository.dart';
 import 'nutrition_repository.dart';
 
+final sessionUserIdProvider = StateProvider<String?>((ref) => null);
+final sessionExpiryProvider = StateProvider<int>((ref) => 0);
+
 final appConfigProvider = Provider<AppConfig>((ref) {
   return AppConfig.fromEnvironment();
 });
@@ -18,6 +21,9 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient(
     config: ref.watch(appConfigProvider),
     tokenStore: ref.watch(tokenStoreProvider),
+    onSessionExpired: () {
+      ref.read(sessionExpiryProvider.notifier).state += 1;
+    },
   );
 });
 
@@ -31,6 +37,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 });
 
 final nutritionRepositoryProvider = Provider<NutritionRepository>((ref) {
+  ref.watch(sessionUserIdProvider);
   final config = ref.watch(appConfigProvider);
   if (config.mockMode) return MockNutritionRepository();
   return ApiNutritionRepository(ref.watch(apiClientProvider));

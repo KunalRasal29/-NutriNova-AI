@@ -194,8 +194,7 @@ class HabitGridScreen extends ConsumerWidget {
     ref.invalidate(todayHabitsProvider);
     ref.invalidate(habitTemplatesProvider);
     ref.invalidate(habitMonthGridProvider(currentMonthKey()));
-    ref.invalidate(dashboardProvider);
-    ref.invalidate(progressReportProvider);
+    refreshNutritionSummaries(ref);
   }
 }
 
@@ -654,6 +653,7 @@ class _CreateHabitSheetState extends ConsumerState<_CreateHabitSheet> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     initialValue: _unit,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Unit'),
                     items: const [
                       DropdownMenuItem(value: 'checkbox', child: Text('Done')),
@@ -677,6 +677,7 @@ class _CreateHabitSheetState extends ConsumerState<_CreateHabitSheet> {
             const SizedBox(height: NovaSpacing.md),
             DropdownButtonFormField<String>(
               initialValue: _category,
+              isExpanded: true,
               decoration: const InputDecoration(labelText: 'Category'),
               items: const [
                 DropdownMenuItem(value: 'custom', child: Text('Custom')),
@@ -758,7 +759,8 @@ class _MonthGridPreview extends ConsumerWidget {
     return grid.when(
       data: (payload) {
         final days = payload['days'] as List<dynamic>? ?? const [];
-        final stats = payload['stats'] as Map<String, dynamic>? ?? const {};
+        final stats =
+            Map<String, dynamic>.from(payload['stats'] as Map? ?? const {});
         final total = stats['total'] as num? ?? 0;
         final completed = stats['completed'] as num? ?? 0;
         final percent = stats['percent_complete'] as num? ?? 0;
@@ -795,7 +797,8 @@ class _MonthGridPreview extends ConsumerWidget {
                 ),
                 itemBuilder: (_, index) {
                   final day = days[index] as Map<String, dynamic>;
-                  final stats = day['stats'] as Map<String, dynamic>? ?? {};
+                  final stats = Map<String, dynamic>.from(
+                      day['stats'] as Map? ?? const {});
                   final total = stats['total'] as num? ?? 0;
                   final percent = stats['percent_complete'] as num? ?? 0;
                   final complete = total > 0 && percent >= 100;

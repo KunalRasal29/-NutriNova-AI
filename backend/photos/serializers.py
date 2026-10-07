@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -9,7 +11,7 @@ from foods.serializers import FoodSearchResultSerializer
 from meals.models import MealLog
 from meals.serializers import MealLogSerializer
 from photos.models import NutritionLabelScan, PhotoAnalysis, PhotoDetectedFood
-from photos.providers import PHOTO_DISCLAIMER
+from photos.providers import analysis_disclaimer
 from photos.services.photo_nutrition_preview import visible_foods_for_user
 from photos.url_utils import public_image_url
 from photos.validators import validate_uploaded_image
@@ -99,7 +101,30 @@ class NutritionLabelScanSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"Unsupported nutrients: {', '.join(sorted(invalid))}."
             )
-        return value
+        cleaned = {}
+        for code, raw_value in value.items():
+            if raw_value is None:
+                continue
+            try:
+                amount = Decimal(str(raw_value))
+            except (InvalidOperation, ValueError) as exc:
+                raise serializers.ValidationError(
+                    f"Enter a valid value for {code}."
+                ) from exc
+            if not amount.is_finite() or amount < 0:
+                raise serializers.ValidationError(
+                    f"{code} must be a finite, non-negative number."
+                )
+            normalized_code = "calories" if code == "calories_kcal" else code
+            if (
+                normalized_code in cleaned
+                and Decimal(cleaned[normalized_code]) != amount
+            ):
+                raise serializers.ValidationError(
+                    "Conflicting calorie values were supplied."
+                )
+            cleaned[normalized_code] = str(amount)
+        return cleaned
 
 
 class PhotoAnalysisDetailSerializer(serializers.ModelSerializer):
@@ -136,7 +161,7 @@ class PhotoAnalysisDetailSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField)
     def get_disclaimer(self, obj):
-        return PHOTO_DISCLAIMER
+        return analysis_disclaimer(obj)
 
     @extend_schema_field(serializers.JSONField)
     def get_review_reasons(self, obj):
@@ -289,9 +314,9 @@ class SplitDetectedFoodSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request:
-            self.fields["items"].child.fields[
-                "food_id"
-            ].queryset = visible_foods_for_user(request.user)
+            self.fields["items"].child.fields["food_id"].queryset = (
+                visible_foods_for_user(request.user)
+            )
 
 
 class EatenPercentageSerializer(serializers.Serializer):
@@ -308,6 +333,7 @@ class PhotoReviewResponseSerializer(serializers.Serializer):
     status = serializers.CharField()
     image_url = serializers.CharField()
     disclaimer = serializers.CharField()
+    error_message = serializers.CharField()
     items = serializers.JSONField()
     total_preview = serializers.JSONField()
     warnings = serializers.JSONField()

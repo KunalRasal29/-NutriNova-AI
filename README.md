@@ -24,7 +24,7 @@ cd /Users/kunalrasal/Documents/LaPulgaFit
 First-time setup:
 
 ```bash
-cp .env.example .env
+test -f .env || cp .env.example .env
 docker compose build
 docker compose up -d
 docker compose ps
@@ -107,14 +107,16 @@ Run against the local backend on iOS simulator:
 
 ```bash
 cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter run -d ios --dart-define=API_BASE_URL=http://localhost:8000
+flutter devices
+flutter run -d YOUR_IOS_SIMULATOR_ID --dart-define=API_BASE_URL=http://localhost:8000
 ```
 
 Run against the local backend on Android emulator:
 
 ```bash
 cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter run -d android --dart-define=API_BASE_URL=http://10.0.2.2:8000
+flutter devices
+flutter run -d YOUR_ANDROID_EMULATOR_ID --dart-define=API_BASE_URL=http://10.0.2.2:8000
 ```
 
 Run on a real iPhone or Android phone on the same Wi-Fi:
@@ -130,31 +132,25 @@ If that command fails, use:
 ifconfig en0
 ```
 
-Look for the `inet` IPv4 address. On Kunal's current Mac session this is:
+Look for the `inet` IPv4 address. Read it again whenever you change Wi-Fi;
+an address from a previous laptop or hotspot may no longer work.
 
-```text
-172.20.10.3
-```
-
-Add that IP to `DJANGO_ALLOWED_HOSTS` in `.env`, then restart the backend:
+Add that IP to `DJANGO_ALLOWED_HOSTS` in `.env`, then reload container environment:
 
 ```bash
-docker compose restart backend
+docker compose up -d --force-recreate backend celery_worker celery_beat
 ```
 
 Then run Flutter with your Mac IP:
 
 ```bash
 cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter run --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
+flutter devices
+flutter run -d YOUR_PHONE_ID --dart-define=API_BASE_URL=http://YOUR_MAC_LAN_IP:8000
 ```
 
-For Kunal's current Mac network:
-
-```bash
-cd /Users/kunalrasal/Documents/LaPulgaFit/mobile
-flutter run --dart-define=API_BASE_URL=http://172.20.10.3:8000
-```
+Replace `YOUR_PHONE_ID` with the ID from `flutter devices` and
+`YOUR_MAC_LAN_IP` with the address reported above.
 
 Backend and MinIO already bind to `0.0.0.0` through Docker Compose. The phone and Mac must be on the same Wi-Fi. Native iOS/Android builds do not need CORS, but Flutter web does.
 
@@ -163,7 +159,6 @@ API base URL quick map:
 - iOS simulator: `http://localhost:8000`
 - Android emulator: `http://10.0.2.2:8000`
 - Real phone: `http://YOUR_MAC_LAN_IP:8000`
-- Real phone on Kunal's current network: `http://172.20.10.3:8000`
 - Production later: your HTTPS API domain
 
 Phone permission checklist:
@@ -173,6 +168,12 @@ Phone permission checklist:
 - Barcode scan requires Camera.
 - Meal photo scan works with Camera or Gallery. Gallery is the fastest smoke test.
 - Real phones cannot use `localhost` for the Mac backend; use the Mac LAN IP.
+
+Without `API_BASE_URL`, native Android defaults to `http://10.0.2.2:8000`;
+iOS and web default to `http://localhost:8000`. Physical phones always need the
+explicit Mac LAN URL. Scan results using `PHOTO_ANALYSIS_PROVIDER=mock` are
+sample data, not image recognition. Real AI scanning needs the configured
+provider and its API key; missing configuration no longer falls back to samples.
 
 ## Nutrition Import Commands
 
@@ -212,11 +213,17 @@ docker compose run --rm backend python manage.py sync_openfoodfacts_barcode --ba
 ```
 
 For optional mobile-triggered lookup when a barcode is not already stored,
-set both values in `.env` and restart the backend:
+set both values in `.env`:
 
 ```bash
 OPENFOODFACTS_USER_AGENT="NutriNovaAI/0.1 (your_email@example.com)"
 OPENFOODFACTS_LIVE_LOOKUP=true
+```
+
+Reload the container environment after changing those settings:
+
+```bash
+docker compose up -d --force-recreate backend celery_worker celery_beat
 ```
 
 Live lookup is off by default. It imports only the requested barcode, records an

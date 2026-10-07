@@ -287,6 +287,8 @@ class _DailyTrackingScreenState extends ConsumerState<DailyTrackingScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SectionHeader(title: 'Reminder plan'),
+                  const Text(
+                      'Preferences only. Device notifications are not scheduled yet.'),
                   SwitchListTile(
                     value: meals,
                     onChanged: (value) => setModalState(() => meals = value),
@@ -333,6 +335,12 @@ class _DailyTrackingScreenState extends ConsumerState<DailyTrackingScreen> {
         await ref
             .read(nutritionRepositoryProvider)
             .updateReminderPreferences(payload);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Reminder preferences saved. Device alerts are not scheduled yet.'),
+          ));
+        }
       }
     } catch (error) {
       if (mounted) {
@@ -347,7 +355,7 @@ class _DailyTrackingScreenState extends ConsumerState<DailyTrackingScreen> {
     setState(() => _busy = true);
     try {
       await action();
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       await _reload();
     } catch (error) {
       if (mounted) {

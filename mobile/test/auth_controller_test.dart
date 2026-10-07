@@ -1,6 +1,8 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nutrinova_ai/src/core/models/app_models.dart';
 import 'package:nutrinova_ai/src/core/repositories/auth_repository.dart';
+import 'package:nutrinova_ai/src/core/repositories/providers.dart';
 import 'package:nutrinova_ai/src/features/auth/auth_controller.dart';
 
 class FakeAuthRepository implements AuthRepository {
@@ -13,7 +15,7 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<UserProfile> login(String email, String password) async {
     user = UserProfile(
-      id: '1',
+      id: email,
       email: email,
       displayName: 'Tester',
       hasCompletedOnboarding: true,
@@ -56,6 +58,24 @@ class FakeAuthRepository implements AuthRepository {
 }
 
 void main() {
+  test('switching accounts resets nutrition repositories and cached data',
+      () async {
+    final container = ProviderContainer(overrides: [
+      authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+    ]);
+    addTearDown(container.dispose);
+    final controller = container.read(authControllerProvider.notifier);
+    await controller.load();
+    await controller.login('first@example.com', 'password');
+    final firstRepository = container.read(nutritionRepositoryProvider);
+
+    await controller.logout();
+    await controller.login('second@example.com', 'password');
+
+    expect(container.read(nutritionRepositoryProvider),
+        isNot(same(firstRepository)));
+  });
+
   test('auth controller logs in and logs out', () async {
     final repository = FakeAuthRepository();
     final controller = AuthController(repository);

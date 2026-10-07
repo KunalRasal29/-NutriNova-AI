@@ -34,7 +34,7 @@ class MealLogScreen extends ConsumerWidget {
         data: (logs) => RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(todayMealLogsProvider);
-            ref.invalidate(dashboardProvider);
+            refreshNutritionSummaries(ref);
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
@@ -94,7 +94,7 @@ Future<void> _copyYesterday(BuildContext context, WidgetRef ref) async {
   try {
     await ref.read(nutritionRepositoryProvider).copyYesterday(DateTime.now());
     ref.invalidate(todayMealLogsProvider);
-    ref.invalidate(dashboardProvider);
+    refreshNutritionSummaries(ref);
     ref.invalidate(recentFoodsProvider);
     ref.invalidate(frequentFoodsProvider);
     for (final mealType in const [
@@ -133,7 +133,8 @@ class _CaloriesRemainingHeader extends StatelessWidget {
     final fat = snapshot?.fatG ?? totals.fatG;
     final fiber = snapshot?.fiberG ?? totals.fiberG;
     final sodium = snapshot?.sodiumMg ?? totals.sodiumMg;
-    final remaining = goal - foodCalories;
+    final exercise = snapshot?.exerciseCalories ?? 0;
+    final remaining = goal - foodCalories + exercise;
     return NovaCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -150,7 +151,7 @@ class _CaloriesRemainingHeader extends StatelessWidget {
               const _MathSymbol('-'),
               _MathPart(value: foodCalories, label: 'Food'),
               const _MathSymbol('+'),
-              const _MathPart(value: 0, label: 'Exercise'),
+              _MathPart(value: exercise, label: 'Exercise'),
               const _MathSymbol('='),
               _MathPart(
                 value: remaining.abs(),
@@ -540,7 +541,7 @@ class _MealSection extends ConsumerWidget {
             totalGrams: result.totalGrams,
           );
       ref.invalidate(todayMealLogsProvider);
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${item.foodName} updated')),
@@ -580,7 +581,7 @@ class _MealSection extends ConsumerWidget {
     try {
       await ref.read(nutritionRepositoryProvider).deleteMealItem(item.id);
       ref.invalidate(todayMealLogsProvider);
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${item.foodName} deleted')),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -74,6 +75,43 @@ class ErrorAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+class RoutingAdapter implements HttpClientAdapter {
+  RoutingAdapter(this.respond);
+
+  final Future<ResponseBody> Function(RequestOptions options) respond;
+  final requests = <RequestOptions>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests.add(options);
+    await requestStream?.drain<void>();
+    return respond(options);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+ResponseBody jsonResponse(int status, Map<String, dynamic> data) =>
+    ResponseBody.fromString(
+      jsonEncode(data),
+      status,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+
+ApiClient clientFor(RoutingAdapter adapter, MemoryTokenStore store) =>
+    ApiClient(
+      config: const AppConfig(apiBaseUrl: 'https://api.test', mockMode: false),
+      tokenStore: store,
+      dio: Dio()..httpClientAdapter = adapter,
+    );
+
 void main() {
   test('api client sends bearer token and parses mocked response', () async {
     final adapter = MockAdapter();
@@ -112,5 +150,138 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('expired refresh token fails once and clears the session', () async {
+    var refreshCalls = 0;
+    final adapter = RoutingAdapter((request) async {
+      if (request.path == '/api/auth/refresh/') {
+        refreshCalls += 1;
+        return jsonResponse(refreshCalls == 1 ? 401 : 500, {
+          'detail': 'Token is expired',
+        });
+      }
+      return jsonResponse(401, {'detail': 'Session expired'});
+    });
+    final store = MemoryTokenStore()
+      ..tokens = const AuthTokens(access: 'old', refresh: 'expired');
+
+    await expectLater(
+      clientFor(adapter, store).get('/api/me/'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 401)),
+    );
+    expect(refreshCalls, 1);
+    expect(store.tokens, isNull);
+  });
+
+  test(
+      'refresh service failure preserves tokens and reports the actual failure',
+      () async {
+    final adapter = RoutingAdapter((request) async {
+      if (request.path == '/api/auth/refresh/') {
+        return jsonResponse(503, {'detail': 'Temporarily unavailable'});
+      }
+      return jsonResponse(401, {'detail': 'Access token expired'});
+    });
+    final store = MemoryTokenStore()
+      ..tokens = const AuthTokens(access: 'old', refresh: 'valid');
+    await expectLater(
+        clientFor(adapter, store).get('/api/me/'),
+        throwsA(
+            isA<ApiException>().having((e) => e.statusCode, 'status', 503)));
+    expect(store.tokens?.refresh, 'valid');
+  });
+
+  test('login ignores saved tokens and does not try to refresh credentials',
+      () async {
+    final adapter = RoutingAdapter((request) async {
+      return jsonResponse(400, {'detail': 'Invalid email or password.'});
+    });
+    final store = MemoryTokenStore()
+      ..tokens = const AuthTokens(access: 'old', refresh: 'old-refresh');
+
+    await expectLater(
+      clientFor(adapter, store).post('/api/auth/login/'),
+      throwsA(isA<ApiException>()),
+    );
+    expect(adapter.requests, hasLength(1));
+    expect(adapter.requests.single.path, '/api/auth/login/');
+    expect(
+        adapter.requests.single.headers.containsKey('Authorization'), isFalse);
+  });
+
+  test('concurrent expired requests share one token refresh', () async {
+    var refreshCalls = 0;
+    final adapter = RoutingAdapter((request) async {
+      if (request.path == '/api/auth/refresh/') {
+        refreshCalls += 1;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        return jsonResponse(200, {'access': 'new', 'refresh': 'new-refresh'});
+      }
+      return request.headers['Authorization'] == 'Bearer new'
+          ? jsonResponse(200, {'status': 'ok'})
+          : jsonResponse(401, {'detail': 'Access token expired'});
+    });
+    final store = MemoryTokenStore()
+      ..tokens = const AuthTokens(access: 'old', refresh: 'old-refresh');
+    final client = clientFor(adapter, store);
+
+    final responses = await Future.wait([
+      client.get('/api/me/'),
+      client.get('/api/meals/'),
+      client.get('/api/habits/today/'),
+    ]);
+
+    expect(responses.map((response) => response.statusCode), everyElement(200));
+    expect(refreshCalls, 1);
+    expect(store.tokens?.refresh, 'new-refresh');
+  });
+
+  test('a failed request after refresh returns an error instead of hanging',
+      () async {
+    final adapter = RoutingAdapter((request) async {
+      if (request.path == '/api/auth/refresh/') {
+        return jsonResponse(200, {'access': 'new', 'refresh': 'new-refresh'});
+      }
+      return request.headers['Authorization'] == 'Bearer new'
+          ? jsonResponse(403, {'detail': 'Food is no longer available.'})
+          : jsonResponse(401, {'detail': 'Access token expired'});
+    });
+    final store = MemoryTokenStore()
+      ..tokens = const AuthTokens(access: 'old', refresh: 'old-refresh');
+
+    await expectLater(
+      clientFor(adapter, store)
+          .get('/api/foods/private-food/')
+          .timeout(const Duration(seconds: 1)),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
+    );
+  });
+
+  test('photo upload can be replayed after access token refresh', () async {
+    final adapter = RoutingAdapter((request) async {
+      if (request.path == '/api/auth/refresh/') {
+        return jsonResponse(200, {'access': 'new', 'refresh': 'new-refresh'});
+      }
+      return request.headers['Authorization'] == 'Bearer new'
+          ? jsonResponse(201, {'id': 'analysis-1'})
+          : jsonResponse(401, {'detail': 'Access token expired'});
+    });
+    final store = MemoryTokenStore()
+      ..tokens = const AuthTokens(access: 'old', refresh: 'old-refresh');
+
+    final response = await clientFor(adapter, store).uploadBytes(
+      '/api/photos/analyze-meal/',
+      fieldName: 'image',
+      fileName: 'meal.jpg',
+      bytes: [1, 2, 3],
+    ).timeout(const Duration(seconds: 1));
+
+    expect(response.statusCode, 201);
+    final uploads = adapter.requests
+        .where((request) => request.path == '/api/photos/analyze-meal/')
+        .toList();
+    expect(uploads, hasLength(2));
+    expect(identical(uploads.first.data, uploads.last.data), isFalse);
   });
 }

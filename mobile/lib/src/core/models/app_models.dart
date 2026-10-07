@@ -1153,6 +1153,7 @@ class PhotoReview {
     required this.items,
     required this.totalPreview,
     required this.warnings,
+    this.errorMessage = '',
   });
 
   factory PhotoReview.fromJson(Map<String, dynamic> json) {
@@ -1172,6 +1173,7 @@ class PhotoReview {
         json['total_preview'] as Map<String, dynamic>? ?? const {},
       ),
       warnings: warnings.map((warning) => warning.toString()).toList(),
+      errorMessage: json['error_message']?.toString() ?? '',
     );
   }
 
@@ -1182,6 +1184,7 @@ class PhotoReview {
   final List<PhotoReviewItem> items;
   final MacroPreview totalPreview;
   final List<String> warnings;
+  final String errorMessage;
 
   bool get isProcessing => status == 'uploaded' || status == 'processing';
   bool get isFailed => status == 'failed';
@@ -1324,6 +1327,8 @@ class NutritionLabelReview {
     required this.ingredients,
     required this.allergens,
     required this.confidence,
+    this.disclaimer = 'Check the label values and serving size before saving.',
+    this.errorMessage = '',
   });
 
   factory NutritionLabelReview.fromJson(Map<String, dynamic> json) {
@@ -1344,6 +1349,9 @@ class NutritionLabelReview {
           .map((item) => item.toString())
           .toList(),
       confidence: _asDouble(label['confidence_score']),
+      disclaimer: json['disclaimer']?.toString() ??
+          'Check the label values and serving size before saving.',
+      errorMessage: json['error_message']?.toString() ?? '',
     );
   }
 
@@ -1358,8 +1366,11 @@ class NutritionLabelReview {
   final String ingredients;
   final List<String> allergens;
   final double confidence;
+  final String disclaimer;
+  final String errorMessage;
 
   bool get isProcessing => status == 'uploaded' || status == 'processing';
+  bool get isFailed => status == 'failed';
 }
 
 Map<String, double> _doubleMap(Object? value) {

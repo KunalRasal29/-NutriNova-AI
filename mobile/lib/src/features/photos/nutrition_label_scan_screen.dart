@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../../core/models/app_models.dart';
 import '../../core/repositories/providers.dart';
 import '../../core/theme/nova_theme.dart';
 import '../../core/widgets/nova_widgets.dart';
+import '../dashboard/dashboard_controller.dart';
 
 class NutritionLabelScanScreen extends ConsumerStatefulWidget {
   const NutritionLabelScanScreen({super.key});
@@ -24,6 +26,7 @@ class _NutritionLabelScanScreenState
   NutritionLabelReview? _review;
   bool _busy = false;
   String _error = '';
+  Timer? _pollTimer;
   final _product = TextEditingController();
   final _brand = TextEditingController();
   final _serving = TextEditingController();
@@ -40,6 +43,7 @@ class _NutritionLabelScanScreenState
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     for (final controller in [
       _product,
       _brand,
@@ -82,7 +86,11 @@ class _NutritionLabelScanScreenState
           LayoutBuilder(
             builder: (context, constraints) {
               final preview = _LabelImageCard(image: _image);
-              final form = _review == null ? _pickerActions() : _reviewForm();
+              final form = _review == null
+                  ? _pickerActions()
+                  : _review!.isProcessing || _review!.isFailed
+                      ? _analysisState()
+                      : _reviewForm();
               if (constraints.maxWidth >= 760) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,6 +184,8 @@ class _NutritionLabelScanScreenState
             ),
           ),
           const SizedBox(height: NovaSpacing.md),
+          Text(_review!.disclaimer),
+          const SizedBox(height: NovaSpacing.md),
           _field(_product, 'Product name'),
           _field(_brand, 'Brand (optional)'),
           _field(_serving, 'Serving size, e.g. 1 bar (50 g)'),
@@ -221,6 +231,48 @@ class _NutritionLabelScanScreenState
     );
   }
 
+  Widget _analysisState() {
+    final review = _review!;
+    return NovaCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(
+            title: review.isFailed ? 'Could not read label' : 'Reading label',
+          ),
+          const SizedBox(height: NovaSpacing.md),
+          if (review.isProcessing) const LinearProgressIndicator(),
+          const SizedBox(height: NovaSpacing.md),
+          Text(review.isFailed
+              ? review.errorMessage.isEmpty
+                  ? 'Try a clearer photo or enter the label values manually.'
+                  : friendlyErrorMessage(review.errorMessage)
+              : 'Your photo is still being analyzed.'),
+          const SizedBox(height: NovaSpacing.md),
+          if (review.isProcessing)
+            NovaButton.secondary(
+              label: 'Refresh',
+              icon: Icons.refresh,
+              onPressed: _busy ? null : _refreshAnalysis,
+            ),
+          if (review.isFailed) ...[
+            NovaButton.primary(
+              label: 'Try again',
+              icon: Icons.refresh,
+              onPressed: _busy ? null : () => setState(() => _review = null),
+            ),
+            const SizedBox(height: NovaSpacing.sm),
+            NovaButton.secondary(
+              label: 'Enter food manually',
+              icon: Icons.edit_outlined,
+              onPressed: () => context.push('/foods/custom?meal_type=snack'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _field(
     TextEditingController controller,
     String label, {
@@ -256,6 +308,7 @@ class _NutritionLabelScanScreenState
         maxHeight: 1600,
       );
       if (image != null && mounted) {
+        _pollTimer?.cancel();
         setState(() {
           _image = image;
           _review = null;
@@ -283,8 +336,35 @@ class _NutritionLabelScanScreenState
             fileName: image.name.isEmpty ? 'nutrition-label.jpg' : image.name,
             bytes: await image.readAsBytes(),
           );
-      _fill(review);
-      if (mounted) setState(() => _review = review);
+      if (mounted) _acceptReview(review);
+    } catch (error) {
+      if (mounted) setState(() => _error = friendlyErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _acceptReview(NutritionLabelReview review) {
+    _pollTimer?.cancel();
+    if (!review.isProcessing && !review.isFailed) _fill(review);
+    setState(() => _review = review);
+    if (review.isProcessing) {
+      _pollTimer = Timer(const Duration(seconds: 3), _refreshAnalysis);
+    }
+  }
+
+  Future<void> _refreshAnalysis() async {
+    final review = _review;
+    if (!mounted || review == null || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    try {
+      final updated = await ref
+          .read(nutritionRepositoryProvider)
+          .nutritionLabelReview(review.analysisId);
+      if (mounted) _acceptReview(updated);
     } catch (error) {
       if (mounted) setState(() => _error = friendlyErrorMessage(error));
     } finally {
@@ -314,28 +394,40 @@ class _NutritionLabelScanScreenState
 
   Future<void> _confirm() async {
     final review = _review;
-    if (review == null || _product.text.trim().isEmpty) {
+    if (review == null || review.isProcessing || review.isFailed) return;
+    if (_product.text.trim().isEmpty) {
       setState(() => _error = 'Enter a product name before saving.');
       return;
+    }
+    final fields = {
+      'calories': _calories,
+      'protein_g': _protein,
+      'carbs_g': _carbs,
+      'fat_g': _fat,
+      'fiber_g': _fiber,
+      'sugar_g': _sugar,
+      'sodium_mg': _sodium,
+    };
+    final nutrients = <String, dynamic>{};
+    for (final entry in fields.entries) {
+      final text = entry.value.text.trim();
+      if (text.isEmpty &&
+          !['calories', 'protein_g', 'carbs_g', 'fat_g'].contains(entry.key)) {
+        continue;
+      }
+      final value = double.tryParse(text);
+      if (value == null || !value.isFinite || value < 0) {
+        setState(() => _error =
+            'Check each nutrient value. Enter 0 only when the label says zero.');
+        return;
+      }
+      nutrients[entry.key] = value;
     }
     setState(() {
       _busy = true;
       _error = '';
     });
     try {
-      Map<String, dynamic> nutrients() => {
-            for (final entry in {
-              'calories': _calories,
-              'protein_g': _protein,
-              'carbs_g': _carbs,
-              'fat_g': _fat,
-              'fiber_g': _fiber,
-              'sugar_g': _sugar,
-              'sodium_mg': _sodium,
-            }.entries)
-              if (double.tryParse(entry.value.text) != null)
-                entry.key: double.parse(entry.value.text),
-          };
       final food =
           await ref.read(nutritionRepositoryProvider).confirmNutritionLabel(
         review.analysisId,
@@ -344,7 +436,7 @@ class _NutritionLabelScanScreenState
           'brand': _brand.text.trim(),
           'serving_size': _serving.text.trim(),
           'barcode': _barcode.text.trim(),
-          'parsed_nutrients': nutrients(),
+          'parsed_nutrients': nutrients,
           'ingredients_text': _ingredients.text.trim(),
           'allergens': _allergens.text
               .split(',')
@@ -353,7 +445,11 @@ class _NutritionLabelScanScreenState
               .toList(),
         },
       );
-      if (mounted) context.go('/foods/${food.id}?meal_type=snack');
+      if (mounted) {
+        ref.invalidate(myFoodsProvider);
+        ref.invalidate(foodDetailProvider(food.id));
+        context.go('/foods/${food.id}?meal_type=snack');
+      }
     } catch (error) {
       if (mounted) setState(() => _error = friendlyErrorMessage(error));
     } finally {

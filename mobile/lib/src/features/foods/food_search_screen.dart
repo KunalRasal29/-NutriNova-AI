@@ -266,7 +266,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
   }
 
   void _refreshFoodState() {
-    ref.invalidate(dashboardProvider);
+    refreshNutritionSummaries(ref);
     ref.invalidate(todayMealLogsProvider);
     ref.invalidate(recentFoodsProvider);
     ref.invalidate(frequentFoodsProvider);
@@ -284,6 +284,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
       ].where((active) => active).length;
 
   void _onQueryChanged(String value) {
+    _searchGeneration += 1;
     setState(() {});
     _debounce?.cancel();
     if (value.trim().isEmpty) {

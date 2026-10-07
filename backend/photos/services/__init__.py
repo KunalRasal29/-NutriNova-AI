@@ -107,44 +107,49 @@ def build_review_reasons(analysis: PhotoAnalysis) -> list[str]:
     return sorted(set(reasons))
 
 
-@transaction.atomic
 def analyze_photo_analysis(analysis_id):
     analysis = PhotoAnalysis.objects.select_related("user").get(id=analysis_id)
-    provider = get_photo_analysis_provider()
+    if analysis.status == PhotoAnalysis.Status.CONFIRMED:
+        return analysis
     analysis.status = PhotoAnalysis.Status.PROCESSING
-    analysis.ai_provider = provider.provider_name
     analysis.error_message = ""
     analysis.save(
         update_fields=[
             "status",
-            "ai_provider",
             "error_message",
             "updated_at",
         ]
     )
 
     try:
+        provider = get_photo_analysis_provider()
+        analysis.ai_provider = provider.provider_name
+        analysis.save(update_fields=["ai_provider", "updated_at"])
         if analysis.analysis_type == PhotoAnalysis.AnalysisType.NUTRITION_LABEL:
             response = provider.analyze_nutrition_label(analysis)
-            _store_label_response(analysis, response)
         else:
             response = provider.analyze_meal_photo(analysis)
-            _store_meal_response(analysis, response)
-        analysis.save(update_fields=["confidence_score", "updated_at"])
-        analysis.refresh_from_db()
-        review_reasons = build_review_reasons(analysis)
-        response["review_reasons"] = review_reasons
-        response["requires_manual_review"] = bool(review_reasons)
-        analysis.raw_ai_response = response
-        analysis.status = PhotoAnalysis.Status.NEEDS_REVIEW
-        analysis.save(
-            update_fields=[
-                "raw_ai_response",
-                "status",
-                "confidence_score",
-                "updated_at",
-            ]
-        )
+        # Keep result writes atomic, but persist failures outside the transaction.
+        with transaction.atomic():
+            if analysis.analysis_type == PhotoAnalysis.AnalysisType.NUTRITION_LABEL:
+                _store_label_response(analysis, response)
+            else:
+                _store_meal_response(analysis, response)
+            analysis.save(update_fields=["confidence_score", "updated_at"])
+            analysis.refresh_from_db()
+            review_reasons = build_review_reasons(analysis)
+            response["review_reasons"] = review_reasons
+            response["requires_manual_review"] = bool(review_reasons)
+            analysis.raw_ai_response = response
+            analysis.status = PhotoAnalysis.Status.NEEDS_REVIEW
+            analysis.save(
+                update_fields=[
+                    "raw_ai_response",
+                    "status",
+                    "confidence_score",
+                    "updated_at",
+                ]
+            )
     except Exception as exc:
         analysis.status = PhotoAnalysis.Status.FAILED
         analysis.error_message = str(exc)
@@ -521,8 +526,28 @@ def confirm_label_as_food(analysis: PhotoAnalysis) -> Food:
     if analysis.analysis_type != PhotoAnalysis.AnalysisType.NUTRITION_LABEL:
         raise ValidationError("Only nutrition label analyses can create label foods.")
     label_scan = analysis.nutrition_label_scan
-    source = get_or_create_label_source(label_scan)
     serving_g = parse_serving_grams(label_scan.serving_size)
+    if serving_g is None or serving_g <= 0:
+        raise ValidationError(
+            {
+                "serving_size": (
+                    "Enter a serving weight in grams, for example 1 bar (50 g)."
+                )
+            }
+        )
+    required_macros = {"calories", "protein_g", "carbs_g", "fat_g"}
+    missing = required_macros - {
+        code for code, value in label_scan.parsed_nutrients.items() if value is not None
+    }
+    if missing:
+        raise ValidationError(
+            {
+                "parsed_nutrients": (
+                    "Check calories, protein, carbs and fat before saving."
+                )
+            }
+        )
+    source = get_or_create_label_source(label_scan)
     food_defaults = {
         "canonical_name": label_scan.product_name or "Scanned product",
         "brand_name": label_scan.brand,

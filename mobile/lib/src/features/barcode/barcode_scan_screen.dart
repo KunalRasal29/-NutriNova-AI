@@ -43,7 +43,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final grams = double.tryParse(_grams.text.trim()) ?? 100;
+    final grams = double.tryParse(_grams.text.trim()) ?? 0;
     return NovaScaffold(
       title: 'Barcode scan',
       body: ListView(
@@ -184,7 +184,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                 onOpen: () => context.push(
                   _withMealType('/foods/${food.id}', _mealType),
                 ),
-                onLog: grams <= 0
+                onLog: !grams.isFinite || grams <= 0
                     ? null
                     : () => _logFood(food: food, grams: grams),
               ),
@@ -256,8 +256,11 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
             mealType: _mealType,
             totalGrams: grams,
           );
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       ref.invalidate(todayMealLogsProvider);
+      ref.invalidate(recentFoodsProvider);
+      ref.invalidate(frequentFoodsProvider);
+      ref.invalidate(usualFoodsProvider(_mealType));
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(content: Text('${food.name} logged')),

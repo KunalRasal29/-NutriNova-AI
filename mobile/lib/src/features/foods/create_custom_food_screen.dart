@@ -706,7 +706,7 @@ class _CreateCustomFoodScreenState
       ref.invalidate(myFoodsProvider);
       ref.invalidate(recentFoodsProvider);
       ref.invalidate(frequentFoodsProvider);
-      ref.invalidate(dashboardProvider);
+      refreshNutritionSummaries(ref);
       ref.invalidate(todayMealLogsProvider);
       setState(() {
         _completed = true;

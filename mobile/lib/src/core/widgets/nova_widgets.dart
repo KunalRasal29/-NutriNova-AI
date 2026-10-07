@@ -655,13 +655,16 @@ class NutritionMetricGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textScaler = MediaQuery.textScalerOf(context);
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       crossAxisCount: 2,
       mainAxisSpacing: NovaSpacing.md,
       crossAxisSpacing: NovaSpacing.md,
-      childAspectRatio: 2.35,
+      mainAxisExtent:
+          (32 + textScaler.scale(20) * 1.4 + textScaler.scale(12) * 1.4)
+              .clamp(96, double.infinity),
       children: [
         for (final item in items)
           DecoratedBox(
@@ -1127,12 +1130,14 @@ class NovaBadge extends StatelessWidget {
               Icon(icon, size: 14, color: color),
               const SizedBox(width: 4),
             ],
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],

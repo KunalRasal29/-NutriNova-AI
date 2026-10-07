@@ -238,8 +238,11 @@ class _FoodDetailScreenState extends ConsumerState<FoodDetailScreen> {
                           mealType: _mealType,
                           totalGrams: totalGrams,
                         );
-                    ref.invalidate(dashboardProvider);
+                    refreshNutritionSummaries(ref);
                     ref.invalidate(todayMealLogsProvider);
+                    ref.invalidate(recentFoodsProvider);
+                    ref.invalidate(frequentFoodsProvider);
+                    ref.invalidate(usualFoodsProvider(_mealType));
                     if (!mounted) return;
                     messenger.showSnackBar(
                       SnackBar(

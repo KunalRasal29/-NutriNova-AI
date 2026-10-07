@@ -6,10 +6,12 @@ import '../models/app_models.dart';
 import '../network/network_status.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode});
+  const ApiException(this.message,
+      {this.statusCode, this.isConnectionError = false});
 
   final String message;
   final int? statusCode;
+  final bool isConnectionError;
 
   @override
   String toString() => message;
@@ -20,7 +22,9 @@ class ApiClient {
     required AppConfig config,
     required TokenStore tokenStore,
     Dio? dio,
+    void Function()? onSessionExpired,
   })  : _tokenStore = tokenStore,
+        _onSessionExpired = onSessionExpired,
         dio = dio ??
             Dio(
               BaseOptions(
@@ -33,24 +37,57 @@ class ApiClient {
     this.dio.interceptors.add(
           InterceptorsWrapper(
             onRequest: (options, handler) async {
-              final access = await _tokenStore.readAccessToken();
-              if (access != null && access.isNotEmpty) {
-                options.headers['Authorization'] = 'Bearer $access';
+              try {
+                if (_skipAuthentication(options)) {
+                  options.headers.remove('Authorization');
+                } else {
+                  final access = await _tokenStore.readAccessToken();
+                  if (access != null && access.isNotEmpty) {
+                    options.headers['Authorization'] = 'Bearer $access';
+                  } else {
+                    options.headers.remove('Authorization');
+                  }
+                }
+                handler.next(options);
+              } catch (error) {
+                handler.reject(
+                  DioException(requestOptions: options, error: error),
+                );
               }
-              handler.next(options);
             },
             onError: (error, handler) async {
               if (_isConnectionError(error)) {
                 NetworkStatus.instance.markOffline();
               }
               if (error.response?.statusCode == 401 &&
-                  error.requestOptions.extra['retried'] != true) {
-                final refreshed = await _refreshToken();
-                if (refreshed) {
-                  final retryOptions = error.requestOptions;
-                  retryOptions.extra['retried'] = true;
-                  final response = await this.dio.fetch<dynamic>(retryOptions);
-                  return handler.resolve(response);
+                  !_skipAuthentication(error.requestOptions)) {
+                try {
+                  if (error.requestOptions.extra['retried'] == true) {
+                    await _expireSession();
+                  } else {
+                    final currentAccess = await _tokenStore.readAccessToken();
+                    final alreadyRefreshed = currentAccess != null &&
+                        currentAccess.isNotEmpty &&
+                        error.requestOptions.headers['Authorization'] !=
+                            'Bearer $currentAccess';
+                    if (alreadyRefreshed || await _refreshToken()) {
+                      final data = error.requestOptions.data;
+                      final retryOptions = error.requestOptions.copyWith(
+                        data: data is FormData ? data.clone() : data,
+                        extra: {...error.requestOptions.extra, 'retried': true},
+                      );
+                      final response =
+                          await this.dio.fetch<dynamic>(retryOptions);
+                      return handler.resolve(response);
+                    }
+                  }
+                } on DioException catch (retryError) {
+                  return handler.reject(retryError);
+                } catch (retryError) {
+                  return handler.reject(DioException(
+                    requestOptions: error.requestOptions,
+                    error: retryError,
+                  ));
                 }
               }
               handler.next(error);
@@ -60,6 +97,8 @@ class ApiClient {
   }
 
   final TokenStore _tokenStore;
+  final void Function()? _onSessionExpired;
+  Future<bool>? _refreshInFlight;
   final Dio dio;
 
   Future<Response<dynamic>> get(
@@ -141,27 +180,72 @@ class ApiClient {
         error.response?.data,
         fallback: error.message ?? 'Something went wrong.',
       );
-      throw ApiException(message, statusCode: error.response?.statusCode);
+      throw ApiException(message,
+          statusCode: error.response?.statusCode,
+          isConnectionError: _isConnectionError(error));
     }
   }
 
   Future<bool> _refreshToken() async {
+    final pending = _refreshInFlight;
+    if (pending != null) return pending;
+    final refresh = _performTokenRefresh();
+    _refreshInFlight = refresh;
+    try {
+      return await refresh;
+    } finally {
+      _refreshInFlight = null;
+    }
+  }
+
+  Future<bool> _performTokenRefresh() async {
     final refresh = await _tokenStore.readRefreshToken();
-    if (refresh == null || refresh.isEmpty) return false;
+    if (refresh == null || refresh.isEmpty) {
+      await _expireSession();
+      return false;
+    }
     try {
       final response = await dio.post<dynamic>(
         '/api/auth/refresh/',
         data: {'refresh': refresh},
         options: Options(extra: {'skipAuth': true}),
       );
-      if (response.data is! Map<String, dynamic>) return false;
-      await _tokenStore.save(AuthTokens.fromJson(response.data));
+      final data = response.data;
+      if (data is! Map<String, dynamic> ||
+          data['access']?.toString().isNotEmpty != true) {
+        await _expireSession();
+        return false;
+      }
+      await _tokenStore.save(AuthTokens(
+        access: data['access'].toString(),
+        refresh: data['refresh']?.toString() ?? refresh,
+      ));
       return true;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 401 ||
+          error.response?.statusCode == 403) {
+        await _expireSession();
+        return false;
+      }
+      rethrow;
     } catch (_) {
-      await _tokenStore.clear();
       return false;
     }
   }
+
+  Future<void> _expireSession() async {
+    await _tokenStore.clear();
+    _onSessionExpired?.call();
+  }
+}
+
+bool _skipAuthentication(RequestOptions options) {
+  return options.extra['skipAuth'] == true ||
+      const {
+        '/api/auth/login/',
+        '/api/auth/register/',
+        '/api/auth/refresh/',
+      }.contains(Uri.parse(options.path).path);
 }
 
 bool _isConnectionError(DioException error) {
